@@ -4,10 +4,10 @@ project(cuMat)
 
 # Cuda is always required
 find_package(CUDA REQUIRED)
-if(COMMAND CUDA_SELECT_NVCC_ARCH_FLAGS)
-	CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
-	LIST(APPEND CUDA_NVCC_FLAGS ${ARCH_FLAGS})
-endif()
+# if(COMMAND CUDA_SELECT_NVCC_ARCH_FLAGS)
+# 	CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
+# 	LIST(APPEND CUDA_NVCC_FLAGS ${ARCH_FLAGS})
+# endif()
 # But Eigen does not work with CUDA, disable it globally
 add_definitions(-DEIGEN_NO_CUDA=1)
 
@@ -38,4 +38,8 @@ add_subdirectory(tests)
 add_subdirectory(demos)
 add_subdirectory(docs)
 add_subdirectory(benchmarks)
+
+# Set cuda compute capability: now just for test
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75")
+
 
