@@ -1,6 +1,6 @@
 #include "TestNoCUDA.h"
 
-#include <catch/catch.hpp>
+#include <catch2/catch.hpp>
 #include <cuMat/Core>
 #include <cuMat/Dense>
 #include <cuMat/Sparse>

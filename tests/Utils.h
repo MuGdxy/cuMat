@@ -1,7 +1,7 @@
 #ifndef __CUMAT_TESTS_UTILS_H__
 #define __CUMAT_TESTS_UTILS_H__
 
-#include <catch/catch.hpp>
+#include <catch2/catch.hpp>
 #include <cuMat/src/Matrix.h>
 #include <Eigen/Core>
 

@@ -1,4 +1,4 @@
-#include <catch/catch.hpp>
+#include <catch2/catch.hpp>
 
 #include <cuMat/src/DisableCompilerWarnings.h>
 #include <cuMat/src/Matrix.h>

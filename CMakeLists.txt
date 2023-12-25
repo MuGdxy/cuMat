@@ -1,15 +1,14 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.20.0)
 project(cuMat)
 # Main CMakeLists of cuMat
 
 # Cuda is always required
+cmake_policy(SET CMP0146 NEW)
 find_package(CUDA REQUIRED)
-# if(COMMAND CUDA_SELECT_NVCC_ARCH_FLAGS)
-# 	CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
-# 	LIST(APPEND CUDA_NVCC_FLAGS ${ARCH_FLAGS})
-# endif()
-# But Eigen does not work with CUDA, disable it globally
 add_definitions(-DEIGEN_NO_CUDA=1)
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES 75)
+endif()
 
 # Add OpenMP if available. This is needed by cuSolver for optimal performance
 find_package(OpenMP)
@@ -27,9 +26,8 @@ endif()
 #  Hence I have to include the paths globally.
 include_directories(${CMAKE_SOURCE_DIR} ${CUDA_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/third-party)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-LIST(APPEND CUDA_NVCC_FLAGS "-std=c++11")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 add_subdirectory(third-party)
@@ -38,8 +36,5 @@ add_subdirectory(tests)
 add_subdirectory(demos)
 add_subdirectory(docs)
 add_subdirectory(benchmarks)
-
-# Set cuda compute capability: now just for test
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75")
 
 
