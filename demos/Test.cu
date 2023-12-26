@@ -14,11 +14,11 @@ int main()
 {
     std::cout << "Batches: " << BATCHES << "\n";
     using MyVec = cuMat::Matrix<float, cuMat::Dynamic, 1, BATCHES, cuMat::ColumnMajor>;
-    MyVec vec = MyVec::Zero(100000, 1, BATCHES);
-    auto test = vec.sum<cuMat::Axis::Row | cuMat::Axis::Column>().eval();
+    MyVec vec  = MyVec::Zero(100000, 1, BATCHES);
+    auto  test = vec.sum<cuMat::Axis::Row | cuMat::Axis::Column>().eval();
     return 0;
-	
-	/*
+
+    /*
     double data[2][2][2] {
         {
             {1, 2},

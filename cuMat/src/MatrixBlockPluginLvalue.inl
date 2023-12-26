@@ -7,5 +7,3 @@
 ////So I have to manually provide the const versions
 
 //most general version, static size
-
-

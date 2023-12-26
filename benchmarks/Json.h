@@ -7,8 +7,8 @@
 
 namespace Json
 {
-	Value ParseFile (const std::string& filename);
-	Value ParseString (const std::string& s);
-}
+Value ParseFile(const std::string& filename);
+Value ParseString(const std::string& s);
+}  // namespace Json
 
 #endif

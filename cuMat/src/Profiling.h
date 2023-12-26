@@ -14,7 +14,6 @@
 CUMAT_NAMESPACE_BEGIN
 
 
-
 /**
  * \brief This class contains the counters used to profile the library.
  * See Counter for which statistics are available.
@@ -22,7 +21,7 @@ CUMAT_NAMESPACE_BEGIN
  */
 class Profiling
 {
-public:
+  public:
     enum Counter
     {
         DeviceMemAlloc,
@@ -66,41 +65,31 @@ public:
 
         _NumCounter_
     };
-private:
+
+  private:
     size_t counters_[_NumCounter_];
 
-public:
+  public:
     void resetAll()
     {
-        for (size_t i = 0; i < _NumCounter_; ++i) counters_[i] = 0;
+        for(size_t i = 0; i < _NumCounter_; ++i)
+            counters_[i] = 0;
     }
-    void reset(Counter counter)
-    {
-        counters_[counter] = 0;
-    }
-    void inc(Counter counter)
-    {
-        counters_[counter]++;
-    }
-    size_t get(Counter counter)
-    {
-        return counters_[counter];
-    }
+    void   reset(Counter counter) { counters_[counter] = 0; }
+    void   inc(Counter counter) { counters_[counter]++; }
+    size_t get(Counter counter) { return counters_[counter]; }
     size_t getReset(Counter counter)
     {
-        size_t v = counters_[counter];
+        size_t v           = counters_[counter];
         counters_[counter] = 0;
         return v;
     }
 
-private:
-    Profiling()
-    {
-        resetAll();
-    }
+  private:
+    Profiling() { resetAll(); }
     CUMAT_DISALLOW_COPY_AND_ASSIGN(Profiling);
 
-public:
+  public:
     static Profiling& instance()
     {
         static Profiling p;
@@ -129,14 +118,13 @@ public:
 
 #else
 
-#if CUMAT_PROFILING==1
+#if CUMAT_PROFILING == 1
 //Profiling enabled
-#define CUMAT_PROFILING_INC(counter) \
+#define CUMAT_PROFILING_INC(counter)                                           \
     CUMAT_NAMESPACE Profiling::instance().inc(CUMAT_NAMESPACE Profiling::Counter::counter)
-#define CUMAT_PROFILING_GET(counter) \
+#define CUMAT_PROFILING_GET(counter)                                           \
     CUMAT_NAMESPACE Profiling::instance().getReset(CUMAT_NAMESPACE Profiling::Counter::counter)
-#define CUMAT_PROFILING_RESET() \
-    CUMAT_NAMESPACE Profiling::instance().resetAll()
+#define CUMAT_PROFILING_RESET() CUMAT_NAMESPACE Profiling::instance().resetAll()
 #else
 //Profiling disabled
 #define CUMAT_PROFILING_INC(counter) ((void)0)
@@ -145,7 +133,6 @@ public:
 #endif
 
 #endif
-
 
 
 CUMAT_NAMESPACE_END

@@ -9,16 +9,14 @@
 #include <string>
 #include "../json_st.h"
 
-void benchmark_cuMat(
-	const std::string& pointsFile,
-	const std::string& settingsFile,
-	int numIterations,
-	Json::Object& returnValues);
-    
-void benchmark_Eigen(
-    const std::string& pointsFile,
-	const std::string& settingsFile,
-	int numIterations,
-    Json::Object& returnValues);
+void benchmark_cuMat(const std::string& pointsFile,
+                     const std::string& settingsFile,
+                     int                numIterations,
+                     Json::Object&      returnValues);
+
+void benchmark_Eigen(const std::string& pointsFile,
+                     const std::string& settingsFile,
+                     int                numIterations,
+                     Json::Object&      returnValues);
 
 #endif

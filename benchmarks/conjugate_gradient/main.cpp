@@ -21,26 +21,29 @@
 #include "benchmark.h"
 #include <cuMat/src/Macros.h>
 
- //https://stackoverflow.com/a/478960/4053176
-std::string exec(const char* cmd) {
-	std::array<char, 128> buffer;
-	std::string result;
+//https://stackoverflow.com/a/478960/4053176
+std::string exec(const char* cmd)
+{
+    std::array<char, 128> buffer;
+    std::string           result;
 #ifdef _MSC_VER
-	std::shared_ptr<FILE> pipe(_popen(cmd, "rt"), _pclose);
+    std::shared_ptr<FILE> pipe(_popen(cmd, "rt"), _pclose);
 #else
-	std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
+    std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
 #endif
-	if (!pipe) throw std::runtime_error("popen() failed!");
-	while (!feof(pipe.get())) {
-		if (fgets(buffer.data(), 128, pipe.get()) != nullptr)
-			result += buffer.data();
-	}
-	return result;
+    if(!pipe)
+        throw std::runtime_error("popen() failed!");
+    while(!feof(pipe.get()))
+    {
+        if(fgets(buffer.data(), 128, pipe.get()) != nullptr)
+            result += buffer.data();
+    }
+    return result;
 }
 int main(int argc, char* argv[])
 {
-	std::string pythonPath = "python.exe";
-    std::string outputDir = CUMAT_STR(OUTPUT_DIR);
+    std::string pythonPath = "python.exe";
+    std::string outputDir  = CUMAT_STR(OUTPUT_DIR);
 
     //load json
     Json::Object config = Json::ParseFile(std::string(CUMAT_STR(CONFIG_FILE)));
@@ -48,24 +51,24 @@ int main(int argc, char* argv[])
 
     //parse parameter + return names
     std::vector<std::string> parameterNames;
-    auto parameterArray = config["Parameters"].AsArray();
-    for (auto it = parameterArray.Begin(); it != parameterArray.End(); ++it)
+    auto                     parameterArray = config["Parameters"].AsArray();
+    for(auto it = parameterArray.Begin(); it != parameterArray.End(); ++it)
     {
         parameterNames.push_back(it->AsString());
     }
     std::vector<std::string> returnNames;
-    auto returnArray = config["Returns"].AsArray();
-    for (auto it = returnArray.Begin(); it != returnArray.End(); ++it)
+    auto                     returnArray = config["Returns"].AsArray();
+    for(auto it = returnArray.Begin(); it != returnArray.End(); ++it)
     {
         returnNames.push_back(it->AsString());
     }
 
     //start test sets
     const Json::Object& sets = config["Sets"].AsObject();
-    for (auto it = sets.Begin(); it != sets.End(); ++it)
+    for(auto it = sets.Begin(); it != sets.End(); ++it)
     {
-        std::string setName = it->first;
-        const Json::Array& params = it->second.AsArray();
+        std::string        setName = it->first;
+        const Json::Array& params  = it->second.AsArray();
         std::cout << std::endl << "Test Set '" << setName << "'" << std::endl;
 
         //cuMat
@@ -85,7 +88,9 @@ int main(int argc, char* argv[])
         std::ofstream outStream(outputDir + setName + ".json");
         outStream << resultAssembled;
         outStream.close();
-		std::string launchParams = pythonPath + " " + std::string(CUMAT_STR(PYTHON_FILES)) + "MakePlots.py" + " \"" + outputDir + setName + "\" " + std::string(CUMAT_STR(CONFIG_FILE));
+        std::string launchParams =
+            pythonPath + " " + std::string(CUMAT_STR(PYTHON_FILES)) + "MakePlots.py" + " \""
+            + outputDir + setName + "\" " + std::string(CUMAT_STR(CONFIG_FILE));
         std::cout << launchParams << std::endl;
         system(launchParams.c_str());
     }

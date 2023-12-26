@@ -7,82 +7,93 @@
 
 namespace
 {
-	struct DotFunctor
-	{
-		const float* a;
-		const float* b;
-		__device__ __forceinline__
-			float operator()(const int &idx) const {
-			return a[idx] * b[idx];
-		}
-	};
-}
-
-void benchmark_CUB(
-	const std::vector<std::string>& parameterNames,
-	const Json::Array& parameters,
-	const std::vector<std::string>& returnNames,
-	Json::Array& returnValues)
+struct DotFunctor
 {
-	//number of runs for time measures
-	const int runs = 10;
-	const int subruns = 10;
+    const float*                     a;
+    const float*                     b;
+    __device__ __forceinline__ float operator()(const int& idx) const
+    {
+        return a[idx] * b[idx];
+    }
+};
+}  // namespace
 
-	//test if the config is valid
-	assert(parameterNames.size() == 1);
-	assert(parameterNames[0] == "Vector-Size");
-	assert(returnNames.size() == 1);
-	assert(returnNames[0] == "Time");
+void benchmark_CUB(const std::vector<std::string>& parameterNames,
+                   const Json::Array&              parameters,
+                   const std::vector<std::string>& returnNames,
+                   Json::Array&                    returnValues)
+{
+    //number of runs for time measures
+    const int runs    = 10;
+    const int subruns = 10;
 
-	cuMat::SimpleRandom rand;
+    //test if the config is valid
+    assert(parameterNames.size() == 1);
+    assert(parameterNames[0] == "Vector-Size");
+    assert(returnNames.size() == 1);
+    assert(returnNames[0] == "Time");
 
-	int numConfigs = parameters.Size();
-	for (int config = 0; config < numConfigs; ++config)
-	{
-		//Input
-		int vectorSize = parameters[config][0].AsInt32();
-		double totalTime = 0;
-		std::cout << "  VectorSize: " << vectorSize << std::flush;
+    cuMat::SimpleRandom rand;
 
-		//Create matrices
-		cuMat::VectorXf a(vectorSize); rand.fillUniform(a, 0, 1);
-		cuMat::VectorXf b(vectorSize); rand.fillUniform(b, 0, 1);
-		cuMat::Scalarf resultDevice;
+    int numConfigs = parameters.Size();
+    for(int config = 0; config < numConfigs; ++config)
+    {
+        //Input
+        int    vectorSize = parameters[config][0].AsInt32();
+        double totalTime  = 0;
+        std::cout << "  VectorSize: " << vectorSize << std::flush;
 
-		//Run it multiple times
-		for (int run = 0; run < runs; ++run)
-		{
+        //Create matrices
+        cuMat::VectorXf a(vectorSize);
+        rand.fillUniform(a, 0, 1);
+        cuMat::VectorXf b(vectorSize);
+        rand.fillUniform(b, 0, 1);
+        cuMat::Scalarf resultDevice;
 
-			//Main logic
-			cudaDeviceSynchronize();
-			auto start = std::chrono::steady_clock::now();
+        //Run it multiple times
+        for(int run = 0; run < runs; ++run)
+        {
 
-			for (int i = 0; i < subruns; ++i)
-			{
-				DotFunctor fun = { a.data(), b.data() };
-				auto it1 = cub::CountingInputIterator<int>(0);
-				auto it2 = cub::TransformInputIterator<float, DotFunctor, cub::CountingInputIterator<int>>(it1, fun);
-				size_t temp_storage_bytes = 0;
-				CUMAT_SAFE_CALL(cub::DeviceReduce::Sum(nullptr, temp_storage_bytes, it2, resultDevice.data(), vectorSize));
-				cuMat::DevicePointer<uint8_t> temp_storage(temp_storage_bytes);
-				CUMAT_SAFE_CALL(cub::DeviceReduce::Sum(static_cast<void*>(temp_storage.pointer()), temp_storage_bytes, it2, resultDevice.data(), vectorSize));
-				float result;
-				CUMAT_SAFE_CALL(cudaMemcpy(&result, resultDevice.data(), sizeof(float), cudaMemcpyDeviceToHost));
-			}
+            //Main logic
+            cudaDeviceSynchronize();
+            auto start = std::chrono::steady_clock::now();
 
-			cudaDeviceSynchronize();
-			auto finish = std::chrono::steady_clock::now();
-			double elapsed = std::chrono::duration_cast<
-				std::chrono::duration<double>>(finish - start).count() * 1000 / subruns;
+            for(int i = 0; i < subruns; ++i)
+            {
+                DotFunctor fun = {a.data(), b.data()};
+                auto       it1 = cub::CountingInputIterator<int>(0);
+                auto       it2 =
+                    cub::TransformInputIterator<float, DotFunctor, cub::CountingInputIterator<int>>(
+                        it1, fun);
+                size_t temp_storage_bytes = 0;
+                CUMAT_SAFE_CALL(cub::DeviceReduce::Sum(
+                    nullptr, temp_storage_bytes, it2, resultDevice.data(), vectorSize));
+                cuMat::DevicePointer<uint8_t> temp_storage(temp_storage_bytes);
+                CUMAT_SAFE_CALL(
+                    cub::DeviceReduce::Sum(static_cast<void*>(temp_storage.pointer()),
+                                           temp_storage_bytes,
+                                           it2,
+                                           resultDevice.data(),
+                                           vectorSize));
+                float result;
+                CUMAT_SAFE_CALL(cudaMemcpy(&result, resultDevice.data(), sizeof(float), cudaMemcpyDeviceToHost));
+            }
 
-			totalTime += elapsed;
-		}
+            cudaDeviceSynchronize();
+            auto   finish = std::chrono::steady_clock::now();
+            double elapsed =
+                std::chrono::duration_cast<std::chrono::duration<double>>(finish - start)
+                    .count()
+                * 1000 / subruns;
 
-		//Result
-		Json::Array result;
-		double finalTime = totalTime / runs;
-		result.PushBack(finalTime);
-		returnValues.PushBack(result);
-		std::cout << " -> " << finalTime << "ms" << std::endl;
-	}
+            totalTime += elapsed;
+        }
+
+        //Result
+        Json::Array result;
+        double      finalTime = totalTime / runs;
+        result.PushBack(finalTime);
+        returnValues.PushBack(result);
+        std::cout << " -> " << finalTime << "ms" << std::endl;
+    }
 }

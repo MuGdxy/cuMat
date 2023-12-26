@@ -16,15 +16,15 @@ CUMAT_NAMESPACE_BEGIN
 
 namespace internal
 {
-    template<typename _MatrixType, typename _Preconditioner>
-    struct traits<ConjugateGradient<_MatrixType, _Preconditioner> >
-    {
-        using MScalar = typename internal::traits<_MatrixType>::Scalar;
-		using Scalar = typename internal::NumTraits<MScalar>::ElementalType;
-        using MatrixType = _MatrixType;
-        using Preconditioner = _Preconditioner;
-    };
-}
+template <typename _MatrixType, typename _Preconditioner>
+struct traits<ConjugateGradient<_MatrixType, _Preconditioner>>
+{
+    using MScalar        = typename internal::traits<_MatrixType>::Scalar;
+    using Scalar         = typename internal::NumTraits<MScalar>::ElementalType;
+    using MatrixType     = _MatrixType;
+    using Preconditioner = _Preconditioner;
+};
+}  // namespace internal
 
 /**
  * \brief Conjugate gradient solver for arbitrary (dense, sparse, matrix-free) matrices.
@@ -63,29 +63,30 @@ namespace internal
  * \tparam _MatrixType any matrix expression with an operator* that takes a dense column vector as right hand side
  * \tparam _Preconditioner the preconditioner object, default is DiagonalPreconditioner
  */
-template<typename _MatrixType, typename _Preconditioner = DiagonalPreconditioner<_MatrixType>>
-class ConjugateGradient : public IterativeSolverBase<ConjugateGradient<_MatrixType, _Preconditioner>>
+template <typename _MatrixType, typename _Preconditioner = DiagonalPreconditioner<_MatrixType>>
+class ConjugateGradient
+    : public IterativeSolverBase<ConjugateGradient<_MatrixType, _Preconditioner>>
 {
-    CUMAT_STATIC_ASSERT(_MatrixType::Batches != Dynamic, "Conjugate Gradient can only work on matrices with compile-time batch count");
+    CUMAT_STATIC_ASSERT(_MatrixType::Batches != Dynamic,
+                        "Conjugate Gradient can only work on matrices with compile-time batch count");
 
-public:
+  public:
     using Type = ConjugateGradient<_MatrixType, _Preconditioner>;
     using Base = IterativeSolverBase<Type>;
+    using Base::maxIterations;
     using typename Base::MatrixType;
     using typename Base::Preconditioner;
-    using typename Base::Scalar;
     using typename Base::RealScalar;
-    using Base::maxIterations;
+    using typename Base::Scalar;
 
-private:
+  private:
+    using Base::error_;
+    using Base::iterations_;
     using Base::matrix_;
     using Base::preconditioner_;
     using Base::tolerance_;
-    using Base::iterations_;
-    using Base::error_;
 
-public:
-
+  public:
     ConjugateGradient() = default;
 
     /**
@@ -111,47 +112,52 @@ public:
         CUMAT_ASSERT(matrix.rows() == matrix.cols() && "Matrix must be square");
     }
 
-    template<typename _RHS, typename _Target>
+    template <typename _RHS, typename _Target>
     void _solve_impl(const MatrixBase<_RHS>& rhs, MatrixBase<_Target>& target) const
     {
         typedef Matrix<typename _Target::Scalar, Dynamic, 1, _Target::Batches, _Target::Flags> GuessType;
-		GuessType guess(target.rows(), 1, target.batches());
-		guess.setZero();
+        GuessType guess(target.rows(), 1, target.batches());
+        guess.setZero();
         _solve_with_guess_impl(rhs.derived(), target.derived(), guess);
     }
 
-    template<typename _RHS, typename _Target, typename _Guess>
+    template <typename _RHS, typename _Target, typename _Guess>
     void _solve_with_guess_impl(_RHS& rhs, _Target& target, _Guess& guess) const
     {
-        CUMAT_STATIC_ASSERT(_Target::Batches != Dynamic, "The target matrix must have a compile-time batch count");
-        CUMAT_STATIC_ASSERT(_Target::Columns == 1, "The target must be a compile-time column vector");
-        CUMAT_STATIC_ASSERT(_Guess::Batches != Dynamic, "The initial guess must have a compile-time batch count");
-        CUMAT_STATIC_ASSERT(_Guess::Columns == 1, "The initial guess must be a compile-time column vector");
+        CUMAT_STATIC_ASSERT(_Target::Batches != Dynamic,
+                            "The target matrix must have a compile-time batch count");
+        CUMAT_STATIC_ASSERT(_Target::Columns == 1,
+                            "The target must be a compile-time column vector");
+        CUMAT_STATIC_ASSERT(_Guess::Batches != Dynamic,
+                            "The initial guess must have a compile-time batch count");
+        CUMAT_STATIC_ASSERT(_Guess::Columns == 1,
+                            "The initial guess must be a compile-time column vector");
         CUMAT_ASSERT(matrix_.cols() == rhs.rows());
         constexpr int Batches = _Target::Batches;
 
         //initialize result and counter
-        iterations_ = 0;
-        error_ = 0;
+        iterations_      = 0;
+        error_           = 0;
         target.inplace() = guess;
 
         //----------------
         // CG ALGORITHM, ported from Eigen
         //----------------
         typedef Matrix<RealScalar, 1, 1, Batches, 0> RealScalarDevice;
-        using std::sqrt;
         using std::abs;
-		typedef typename _Target::Scalar VectorScalarType;
+        using std::sqrt;
+        typedef typename _Target::Scalar VectorScalarType;
         typedef Matrix<VectorScalarType, Dynamic, 1, Batches, _Target::Flags> VectorType;
         Index n = matrix_.cols();
 
-        VectorType residual = rhs - matrix_ * target; //initial residual
+        VectorType residual = rhs - matrix_ * target;  //initial residual
         std::valarray<RealScalar> rhsNorm2(Batches);
         rhs.squaredNorm().eval().copyToHost(&rhsNorm2[0]);
         //RealScalar rhsNorm2 = static_cast<RealScalar>(rhs.squaredNorm()); //SLOW: device->host memcopy (explicit conversion operator)
         bool all = true;
-        for (int b = 0; b < Batches; ++b) all = all && (rhsNorm2[b] < tolerance_ * tolerance_);
-        if (all)
+        for(int b = 0; b < Batches; ++b)
+            all = all && (rhsNorm2[b] < tolerance_ * tolerance_);
+        if(all)
         {
             //early out, right-hand side is zero
             target.setZero();
@@ -162,8 +168,9 @@ public:
         residual.squaredNorm().eval().copyToHost(&residualNorm2[0]);
         //RealScalar residualNorm2 = static_cast<RealScalar>(residual.squaredNorm()); //SLOW: device->host memcopy
         all = true;
-        for (int b = 0; b < Batches; ++b) all = all && residualNorm2[b] < threshold[b];
-        if (all)
+        for(int b = 0; b < Batches; ++b)
+            all = all && residualNorm2[b] < threshold[b];
+        if(all)
         {
             //early out, already close enough to the solution
             error_ = sqrt((residualNorm2 / rhsNorm2).max());
@@ -171,37 +178,38 @@ public:
         }
 
         VectorType p(n, 1, Batches);
-        p = preconditioner_.solve(residual); // initial search direction
+        p = preconditioner_.solve(residual);  // initial search direction
 
         VectorType z(n, 1, Batches), tmp(n, 1, Batches);
-        RealScalarDevice absNew = residual.dot(p).real(); // the square of the absolute value of r scaled by invM
-        Index i = 0;
+        RealScalarDevice absNew = residual.dot(p).real();  // the square of the absolute value of r scaled by invM
+        Index       i       = 0;
         const Index maxIter = maxIterations();
-        while (i < maxIter)
+        while(i < maxIter)
         {
-            tmp.inplace() = matrix_ * p; // the bottleneck of the algorithm
+            tmp.inplace() = matrix_ * p;  // the bottleneck of the algorithm
 
-            auto alpha = absNew.cwiseDiv(p.dot(tmp)); // the amount we travel on dir; expression, cwiseDiv not evaluated (dot is)
-            target += alpha.template cast<VectorScalarType>().cwiseMul(p); // update solution
-            residual -= alpha.template cast<VectorScalarType>().cwiseMul(tmp); // update residual
+            auto alpha = absNew.cwiseDiv(p.dot(tmp));  // the amount we travel on dir; expression, cwiseDiv not evaluated (dot is)
+            target += alpha.template cast<VectorScalarType>().cwiseMul(p);  // update solution
+            residual -= alpha.template cast<VectorScalarType>().cwiseMul(tmp);  // update residual
 
             residual.squaredNorm().eval().copyToHost(&residualNorm2[0]);
             //RealScalar residualNorm2 = static_cast<RealScalar>(residual.squaredNorm()); //SLOW: device->host memcopy
             all = true;
-            for (int b = 0; b < Batches; ++b) all = all && residualNorm2[b] < threshold[b];
-            if (all)
+            for(int b = 0; b < Batches; ++b)
+                all = all && residualNorm2[b] < threshold[b];
+            if(all)
                 break;
 
-            z.inplace() = preconditioner_.solve(residual); // approximately solve for "A z = residual"
+            z.inplace() = preconditioner_.solve(residual);  // approximately solve for "A z = residual"
 
             RealScalarDevice absOld = absNew;
-            absNew = residual.dot(z).real(); // update the absolute value of r
-            auto beta = absNew.cwiseDiv(absOld); //expression, not evaluated
+            absNew = residual.dot(z).real();  // update the absolute value of r
+            auto beta = absNew.cwiseDiv(absOld);  //expression, not evaluated
             // calculate the Gram-Schmidt value used to create the new search direction
-            p.inplace() = z + beta.template cast<VectorScalarType>().cwiseMul(p); // update search direction
+            p.inplace() = z + beta.template cast<VectorScalarType>().cwiseMul(p);  // update search direction
             i++;
         }
-        error_ = sqrt((residualNorm2 / rhsNorm2).max());
+        error_      = sqrt((residualNorm2 / rhsNorm2).max());
         iterations_ = i;
     }
 };
@@ -215,31 +223,32 @@ public:
     \endcode
  * \tparam _MatrixType 
  */
-template<typename _MatrixType>
+template <typename _MatrixType>
 class DiagonalPreconditioner
 {
-private:
+  private:
     typedef typename internal::ExtractDiagonalFunctor<typename _MatrixType::Scalar>::VectorType Scalar;
     typedef Matrix<Scalar, Dynamic, 1, 1, ColumnMajor> Vector;
-    Vector entries_;
+    Vector                                             entries_;
 
-public:
-	DiagonalPreconditioner() {}
+  public:
+    DiagonalPreconditioner() {}
     DiagonalPreconditioner(const MatrixBase<_MatrixType>& matrix)
         : entries_(matrix.diagonal().cwiseInverseCheck())
-    {}
+    {
+    }
 
-    template<typename _Rhs>
-    using SolveReturnType = BinaryOp<Vector, _Rhs, functor::BinaryMathFunctor_cwiseMul<Scalar>>;
+    template <typename _Rhs>
+    using SolveReturnType =
+        BinaryOp<Vector, _Rhs, functor::BinaryMathFunctor_cwiseMul<Scalar>>;
     /**
      * \brief Solves for an approximation of A.x=b
      * \tparam _Rhs the type of right hand side
      * \param b the right hand side of the equation
      * \return the approximate solution of x
      */
-    template<typename _Rhs>
-    SolveReturnType<_Rhs>
-    solve(const MatrixBase<_Rhs>& b) const
+    template <typename _Rhs>
+    SolveReturnType<_Rhs> solve(const MatrixBase<_Rhs>& b) const
     {
         return entries_.cwiseMul(b.derived());
     }
@@ -249,15 +258,14 @@ public:
  * \brief A trivial preconditioner which approximates any matrix as the identity matrix.
  * \tparam _MatrixType 
  */
-template<typename _MatrixType>
+template <typename _MatrixType>
 class IdentityPreconditioner
 {
 
-public:
-    IdentityPreconditioner(const MatrixBase<_MatrixType>& matrix)
-    {}
+  public:
+    IdentityPreconditioner(const MatrixBase<_MatrixType>& matrix) {}
 
-    template<typename _Rhs>
+    template <typename _Rhs>
     _Rhs solve(const MatrixBase<_Rhs>& b) const
     {
         return b;

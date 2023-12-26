@@ -10,7 +10,6 @@ CUMAT_NAMESPACE_BEGIN
 
 class AllocatorBase
 {
-
 };
 
 CUMAT_NAMESPACE_END

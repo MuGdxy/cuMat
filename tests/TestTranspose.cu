@@ -7,15 +7,15 @@ using namespace cuMat;
 
 TEST_CASE("direct_fixed", "[transpose]")
 {
-	//direct transposing, fixed matrix
-	typedef cuMat::Matrix<float, 5, 6, 2, cuMat::RowMajor> matd2;
-	typedef cuMat::Matrix<float, 5, 6, 1, cuMat::RowMajor> matd1;
-	typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> math;
-	math in1 = math::Random(5, 6);
-	math in2 = math::Random(5, 6);
-	matd2 md(5, 6, 2);
-	md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
-	md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
+    //direct transposing, fixed matrix
+    typedef cuMat::Matrix<float, 5, 6, 2, cuMat::RowMajor> matd2;
+    typedef cuMat::Matrix<float, 5, 6, 1, cuMat::RowMajor> matd1;
+    typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> math;
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
+    matd2 md(5, 6, 2);
+    md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
+    md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
     typedef cuMat::Matrix<float, 6, 5, 2, cuMat::RowMajor> matd2t;
 
     //transpose (for real)
@@ -24,7 +24,7 @@ TEST_CASE("direct_fixed", "[transpose]")
     REQUIRE(CUMAT_PROFILING_GET(EvalAny) == 1);
     REQUIRE(CUMAT_PROFILING_GET(EvalTranspose) == 1);
     assertMatrixEquality(mdt2, md.adjoint());
-	//test
+    //test
     math out21 = mdt2.block<6, 5, 1>(0, 0, 0).eval().toEigen();
     math out22 = mdt2.block<6, 5, 1>(0, 0, 1).eval().toEigen();
     REQUIRE(in1.transpose() == out21);
@@ -48,8 +48,8 @@ TEST_CASE("direct_dynamic1", "[transpose]")
     typedef cuMat::Matrix<int, cuMat::Dynamic, cuMat::Dynamic, cuMat::Dynamic, cuMat::RowMajor> matd2;
     typedef cuMat::Matrix<int, cuMat::Dynamic, cuMat::Dynamic, 1, cuMat::RowMajor> matd1;
     typedef Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> math;
-    math in1 = math::Random(5, 6);
-    math in2 = math::Random(5, 6);
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
     matd2 md(5, 6, 2);
     md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
     md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
@@ -72,8 +72,8 @@ TEST_CASE("direct_dynamic2", "[transpose]")
     typedef cuMat::Matrix<float, cuMat::Dynamic, cuMat::Dynamic, cuMat::Dynamic, cuMat::RowMajor> matd2;
     typedef cuMat::Matrix<float, cuMat::Dynamic, cuMat::Dynamic, 1, cuMat::RowMajor> matd1;
     typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> math;
-    math in1 = math::Random(5, 6);
-    math in2 = math::Random(5, 6);
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
     matd2 md(5, 6, 2);
     md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
     md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
@@ -97,15 +97,15 @@ TEST_CASE("noop_fixed", "[transpose]")
     //just changing storage order, fixed matrix
     typedef cuMat::Matrix<int, 5, 6, 2, cuMat::RowMajor> matd2;
     typedef cuMat::Matrix<int, 5, 6, 1, cuMat::RowMajor> matd1;
-    typedef Eigen::Matrix<int, 5, 6, Eigen::RowMajor> math;
-    math in1 = math::Random(5, 6);
-    math in2 = math::Random(5, 6);
+    typedef Eigen::Matrix<int, 5, 6, Eigen::RowMajor>    math;
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
     matd2 md(5, 6, 2);
     md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
     md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
     //transpose (no-op)
     typedef cuMat::Matrix<int, 6, 5, 2, cuMat::ColumnMajor> matdt2;
-    typedef Eigen::Matrix<int, 6, 5, Eigen::ColMajor> matht;
+    typedef Eigen::Matrix<int, 6, 5, Eigen::ColMajor>       matht;
 
     CUMAT_PROFILING_RESET();
     matdt2 mdt1 = md.transpose();
@@ -124,8 +124,8 @@ TEST_CASE("noop_dynamic", "[transpose]")
     typedef cuMat::Matrix<int, cuMat::Dynamic, cuMat::Dynamic, cuMat::Dynamic, cuMat::RowMajor> matd2;
     typedef cuMat::Matrix<int, cuMat::Dynamic, cuMat::Dynamic, 1, cuMat::RowMajor> matd1;
     typedef Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> math;
-    math in1 = math::Random(5, 6);
-    math in2 = math::Random(5, 6);
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
     matd2 md(5, 6, 2);
     md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
     md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
@@ -150,15 +150,15 @@ TEST_CASE("cwise_fixed", "[transpose]")
     //just changing storage order, fixed matrix
     typedef cuMat::Matrix<int, 5, 6, 2, cuMat::RowMajor> matd2;
     typedef cuMat::Matrix<int, 5, 6, 1, cuMat::RowMajor> matd1;
-    typedef Eigen::Matrix<int, 5, 6, Eigen::RowMajor> math;
-    math in1 = math::Random(5, 6);
-    math in2 = math::Random(5, 6);
+    typedef Eigen::Matrix<int, 5, 6, Eigen::RowMajor>    math;
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
     matd2 md(5, 6, 2);
     md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
     md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
     //transpose (no-op)
     typedef cuMat::Matrix<int, 6, 5, 2, cuMat::ColumnMajor> matdt2;
-    typedef Eigen::Matrix<int, 6, 5, Eigen::ColMajor> matht;
+    typedef Eigen::Matrix<int, 6, 5, Eigen::ColMajor>       matht;
 
     CUMAT_PROFILING_RESET();
     matdt2 mdt1 = md.cwiseNegate().transpose();
@@ -178,8 +178,8 @@ TEST_CASE("cwise_dynamic", "[transpose]")
     typedef cuMat::Matrix<int, cuMat::Dynamic, cuMat::Dynamic, cuMat::Dynamic, cuMat::RowMajor> matd2;
     typedef cuMat::Matrix<int, cuMat::Dynamic, cuMat::Dynamic, 1, cuMat::RowMajor> matd1;
     typedef Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> math;
-    math in1 = math::Random(5, 6);
-    math in2 = math::Random(5, 6);
+    math  in1 = math::Random(5, 6);
+    math  in2 = math::Random(5, 6);
     matd2 md(5, 6, 2);
     md.block<5, 6, 1>(0, 0, 0) = matd1::fromEigen(in1);
     md.block<5, 6, 1>(0, 0, 1) = matd1::fromEigen(in2);
@@ -209,39 +209,29 @@ TEST_CASE("cwise_dynamic", "[transpose]")
     REQUIRE((-in2) == out32);
 }
 
-template<typename Type>
+template <typename Type>
 void testComplexTranspose()
 {
-    typedef typename internal::NumTraits<Type>::RealType Real;
-    typedef Matrix<Type, Dynamic, Dynamic, 1, RowMajor> CMatrix;
+    typedef typename internal::NumTraits<Type>::RealType   Real;
+    typedef Matrix<Type, Dynamic, Dynamic, 1, RowMajor>    CMatrix;
     typedef Matrix<Type, Dynamic, Dynamic, 1, ColumnMajor> CMatrixT;
-    typedef Matrix<Real, Dynamic, Dynamic, 1, RowMajor> RMatrix;
+    typedef Matrix<Real, Dynamic, Dynamic, 1, RowMajor>    RMatrix;
 
-    Type data[1][3][3]{
-        {
-            { Type(1,0), Type(6,0), Type(-4,0) }, //only real
-            { Type(0,5), Type(0,-3), Type(0, 0.3f) }, //only imaginary
-            { Type(0.4f,0.9f), Type(-1.5f,0.3f), Type(3.5f,-2.8f) } //mixed
-        }
-    };
+    Type    data[1][3][3]{{
+        {Type(1, 0), Type(6, 0), Type(-4, 0)},     //only real
+        {Type(0, 5), Type(0, -3), Type(0, 0.3f)},  //only imaginary
+        {Type(0.4f, 0.9f), Type(-1.5f, 0.3f), Type(3.5f, -2.8f)}  //mixed
+    }};
     CMatrix mat = CMatrix::fromArray(data);
 
-    Type transposedData[1][3][3]{
-        {
-            { Type(1,0), Type(0,5), Type(0.4f,0.9f) },
-            { Type(6,0), Type(0,-3), Type(-1.5f,0.3f) },
-            { Type(-4,0), Type(0, 0.3f), Type(3.5f,-2.8f) }
-        }
-    };
+    Type    transposedData[1][3][3]{{{Type(1, 0), Type(0, 5), Type(0.4f, 0.9f)},
+                                     {Type(6, 0), Type(0, -3), Type(-1.5f, 0.3f)},
+                                     {Type(-4, 0), Type(0, 0.3f), Type(3.5f, -2.8f)}}};
     CMatrix transposed = CMatrix::fromArray(transposedData);
 
-    Type adjointData[1][3][3]{
-        {
-            { Type(1,0), Type(0,-5), Type(0.4f,-0.9f) },
-            { Type(6,0), Type(0,3), Type(-1.5f,-0.3f) },
-            { Type(-4,0), Type(0, -0.3f), Type(3.5f,2.8f) }
-        }
-    };
+    Type    adjointData[1][3][3]{{{Type(1, 0), Type(0, -5), Type(0.4f, -0.9f)},
+                                  {Type(6, 0), Type(0, 3), Type(-1.5f, -0.3f)},
+                                  {Type(-4, 0), Type(0, -0.3f), Type(3.5f, 2.8f)}}};
     CMatrix adjoint = CMatrix::fromArray(adjointData);
 
     SECTION("transpose")

@@ -4,5 +4,5 @@
 
 int cudaSumAll(const cuMat::BMatrixXiR& mat)
 {
-	return static_cast<int>(mat.sum());
+    return static_cast<int>(mat.sum());
 }

@@ -6,15 +6,10 @@ using namespace std;
 
 int main()
 {
-    double data[1][2][2] {
-        {
-            {1, 2},
-            {3, 4}
-        }
-    };
+    double    data[1][2][2]{{{1, 2}, {3, 4}}};
     MatrixXdR mat = MatrixXdR::fromArray(data);
     //The reductions return a Matrix of static size 1x1x1, but still on GPU memory.
-    //For these matrices, there exists an explicit conversion operator to convert 
+    //For these matrices, there exists an explicit conversion operator to convert
     //  them to the CPU scalars, so that they can be used in regular C++ code.
     cout << "Here is mat.sum():       " << static_cast<double>(mat.sum()) << endl;
     cout << "Here is mat.prod():      " << static_cast<double>(mat.prod()) << endl;

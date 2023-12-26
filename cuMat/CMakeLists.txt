@@ -1,5 +1,5 @@
 project(cuMat)
-# Define 'cuMat_headers' variable to list all the header files
+#Define 'cuMat_headers' variable to list all the header files
 file(GLOB_RECURSE CUMAT_HEADERS src/*.h src/*.inl)
 # Append "Core" "Dense" "Sparse" "IterativeLinearSolvers"
 set(CUMAT_HEADERS "${CUMAT_HEADERS};Core;Dense;Sparse;IterativeLinearSolvers;")

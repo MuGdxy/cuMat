@@ -20,36 +20,36 @@ CUMAT_NAMESPACE_BEGIN
 template <typename _Derived>
 class StridedMatrixInputIterator
 {
-public:
+  public:
     // Required iterator traits
-    typedef StridedMatrixInputIterator<_Derived> self_type; ///< My own type
-    typedef Index difference_type; ///< Type to express the result of subtracting one iterator from another
+    typedef StridedMatrixInputIterator<_Derived> self_type;  ///< My own type
+    typedef Index difference_type;  ///< Type to express the result of subtracting one iterator from another
     using ValueType = typename internal::traits<_Derived>::Scalar;
-    using value_type = ValueType; ///< The type of the element the iterator can point to
-    using pointer = ValueType*; ///< The type of a pointer to an element the iterator can point to
-    using reference = ValueType&; ///< The type of a reference to an element the iterator can point to
+    using value_type = ValueType;  ///< The type of the element the iterator can point to
+    using pointer = ValueType*;  ///< The type of a pointer to an element the iterator can point to
+    using reference = ValueType&;  ///< The type of a reference to an element the iterator can point to
     using iterator_category = std::random_access_iterator_tag;
 
     typedef thrust::tuple<Index, Index, Index> Index3;
 
-protected:
+  protected:
     _Derived mat_;
-    Index3 dims_;
-    Index3 stride_;
-    Index index_;
+    Index3   dims_;
+    Index3   stride_;
+    Index    index_;
 
-public:
+  public:
     /// Constructor
-    __host__ __device__
-    StridedMatrixInputIterator(const MatrixBase<_Derived>& mat, const Index3& stride)
+    __host__ __device__ StridedMatrixInputIterator(const MatrixBase<_Derived>& mat,
+                                                   const Index3& stride)
         : mat_(mat.derived())
         , dims_{mat.rows(), mat.cols(), mat.batches()}
         , stride_(stride)
         , index_(0)
-    {}
+    {
+    }
 
-    __host__ __device__
-    static Index toLinear(const Index3& coords, const Index3& stride)
+    __host__ __device__ static Index toLinear(const Index3& coords, const Index3& stride)
     {
         Index l = 0;
         //for (int i = 0; i < 3; ++i) l += coords[i] * stride[i];
@@ -60,16 +60,13 @@ public:
         return l;
     }
 
-    __host__ __device__
-    static Index3 fromLinear(Index linear, const Index3& dims, const Index3& stride)
+    __host__ __device__ static Index3 fromLinear(Index linear, const Index3& dims, const Index3& stride)
     {
         //for (int i = 0; i < 3; ++i) outCoords[i] = (linear / stride[i]) % dims[i];
         //manual loop unrolling
-        Index3 coords = {
-            (linear / stride.get<0>()) % dims.get<0>(),
-            (linear / stride.get<1>()) % dims.get<1>(),
-            (linear / stride.get<2>()) % dims.get<2>()
-        };
+        Index3 coords = {(linear / stride.get<0>()) % dims.get<0>(),
+                         (linear / stride.get<1>()) % dims.get<1>(),
+                         (linear / stride.get<2>()) % dims.get<2>()};
         //printf("index: %d; stride: %d,%d,%d  -> coords: %d,%d,%d\n",
         //    (int)linear,
         //    (int)stride.get<0>(), (int)stride.get<1>(), (int)stride.get<2>(),
@@ -149,7 +146,7 @@ public:
     template <typename Distance>
     __device__ __forceinline__ value_type operator[](Distance n) const
     {
-        Index3 coords = fromLinear(index_+n, dims_, stride_);
+        Index3 coords = fromLinear(index_ + n, dims_, stride_);
         return mat_.coeff(coords.get<0>(), coords.get<1>(), coords.get<2>(), -1);
     }
 
@@ -177,25 +174,26 @@ public:
 template <typename _Derived>
 class StridedMatrixOutputIterator : public StridedMatrixInputIterator<_Derived>
 {
-public:
+  public:
     // Required iterator traits
-    typedef StridedMatrixInputIterator<_Derived> Base;
-    typedef StridedMatrixOutputIterator<_Derived> self_type; ///< My own type
-    typedef Index difference_type; ///< Type to express the result of subtracting one iterator from another
+    typedef StridedMatrixInputIterator<_Derived>  Base;
+    typedef StridedMatrixOutputIterator<_Derived> self_type;  ///< My own type
+    typedef Index difference_type;  ///< Type to express the result of subtracting one iterator from another
     using ValueType = typename internal::traits<_Derived>::Scalar;
-    using value_type = ValueType; ///< The type of the element the iterator can point to
-    using pointer = ValueType*; ///< The type of a pointer to an element the iterator can point to
-    using reference = ValueType&; ///< The type of a reference to an element the iterator can point to
+    using value_type = ValueType;  ///< The type of the element the iterator can point to
+    using pointer = ValueType*;  ///< The type of a pointer to an element the iterator can point to
+    using reference = ValueType&;  ///< The type of a reference to an element the iterator can point to
     using iterator_category = std::random_access_iterator_tag;
 
     typedef thrust::tuple<Index, Index, Index> Index3;
 
-public:
+  public:
     /// Constructor
-    __host__ __device__
-        StridedMatrixOutputIterator(const MatrixBase<_Derived>& mat, const Index3& stride)
+    __host__ __device__ StridedMatrixOutputIterator(const MatrixBase<_Derived>& mat,
+                                                    const Index3& stride)
         : StridedMatrixInputIterator<_Derived>(mat, stride)
-    {}
+    {
+    }
 
     //The only new thing is the non-const version of the dereference
 
@@ -208,39 +206,34 @@ public:
 };
 
 
-
 /**
 * \brief A random-access input generator for dereferencing a sequence of incrementing integer values.
 * This is an extension to the CountingInputIterator from CUB to specify the increment.
 */
-template <
-    typename ValueType = Index,
-    typename OffsetT = Index>
-    class CountingInputIterator
+template <typename ValueType = Index, typename OffsetT = Index>
+class CountingInputIterator
 {
-public:
-
+  public:
     // Required iterator traits
-    typedef CountingInputIterator               self_type;              ///< My own type
-    typedef OffsetT                             difference_type;        ///< Type to express the result of subtracting one iterator from another
-    typedef ValueType                           value_type;             ///< The type of the element the iterator can point to
-    typedef ValueType*                          pointer;                ///< The type of a pointer to an element the iterator can point to
-    typedef ValueType                           reference;              ///< The type of a reference to an element the iterator can point to
+    typedef CountingInputIterator self_type;  ///< My own type
+    typedef OffsetT difference_type;  ///< Type to express the result of subtracting one iterator from another
+    typedef ValueType value_type;  ///< The type of the element the iterator can point to
+    typedef ValueType* pointer;  ///< The type of a pointer to an element the iterator can point to
+    typedef ValueType reference;  ///< The type of a reference to an element the iterator can point to
     using iterator_category = std::random_access_iterator_tag;
 
-private:
-
+  private:
     ValueType val;
     ValueType increment;
 
-public:
-
+  public:
     /// Constructor
-    __host__ __device__ __forceinline__ CountingInputIterator(
-        const ValueType &val,          ///< Starting value for the iterator instance to report
-        const ValueType &increment=1)  ///< The increment
-        : val(val), increment(increment)
-    {}
+    __host__ __device__ __forceinline__ CountingInputIterator(const ValueType& val,  ///< Starting value for the iterator instance to report
+                                                              const ValueType& increment = 1)  ///< The increment
+        : val(val)
+        , increment(increment)
+    {
+    }
 
     /// Postfix increment
     __host__ __device__ __forceinline__ self_type operator++(int)
@@ -260,7 +253,7 @@ public:
     /// Indirection
     __host__ __device__ __forceinline__ reference operator*() const
     {
-        return val*increment;
+        return val * increment;
     }
 
     /// Addition
@@ -323,10 +316,9 @@ public:
     /// ostream operator
     friend std::ostream& operator<<(std::ostream& os, const self_type& itr)
     {
-        os << "[" << itr.val*itr.increment << "]";
+        os << "[" << itr.val * itr.increment << "]";
         return os;
     }
-
 };
 
 CUMAT_NAMESPACE_END

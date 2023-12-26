@@ -33,30 +33,34 @@ CUMAT_NAMESPACE_BEGIN
 
 class DummyLogger
 {
-private:
-	std::ios_base::fmtflags flags_;
-	bool enabled_;
+  private:
+    std::ios_base::fmtflags flags_;
+    bool                    enabled_;
 
-public:
-	DummyLogger(const std::string& level)
-		: enabled_(level != "[debug]") //to disable the many, many logs during kernel evaluations in the test suites
-	{
-		flags_ = std::cout.flags();
-		if (enabled_) std::cout << level << "  ";
-	}
-	~DummyLogger()
-	{
-		if (enabled_) {
-			std::cout << std::endl;
-			std::cout.flags(flags_);
-		}
-	}
+  public:
+    DummyLogger(const std::string& level)
+        : enabled_(level != "[debug]")  //to disable the many, many logs during kernel evaluations in the test suites
+    {
+        flags_ = std::cout.flags();
+        if(enabled_)
+            std::cout << level << "  ";
+    }
+    ~DummyLogger()
+    {
+        if(enabled_)
+        {
+            std::cout << std::endl;
+            std::cout.flags(flags_);
+        }
+    }
 
-	template <typename T>
-	DummyLogger& operator<<(const T& t) {
-		if (enabled_) std::cout << t;
-		return *this;
-	}
+    template <typename T>
+    DummyLogger& operator<<(const T& t)
+    {
+        if(enabled_)
+            std::cout << t;
+        return *this;
+    }
 };
 
 #ifndef CUMAT_LOG_DEBUG
@@ -67,19 +71,19 @@ public:
 #endif
 
 #ifndef CUMAT_LOG_INFO
- /**
+/**
  * Logs the message as a information message
  */
 #define CUMAT_LOG_INFO(...) DummyLogger("[info]") << __VA_ARGS__
 #endif
 #ifndef CUMAT_LOG_WARNING
- /**
+/**
  * Logs the message as a warning message
  */
 #define CUMAT_LOG_WARNING(...) DummyLogger("[warning]") << __VA_ARGS__
 #endif
 #ifndef CUMAT_LOG_SEVERE
- /**
+/**
  * Logs the message as a severe error message
  */
 #define CUMAT_LOG_SEVERE(...) DummyLogger("[SEVERE]") << __VA_ARGS__

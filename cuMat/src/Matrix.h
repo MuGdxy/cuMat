@@ -15,443 +15,632 @@
 #include "TransposeOp.h"
 #include "IO.h"
 
-#if CUMAT_EIGEN_SUPPORT==1
+#if CUMAT_EIGEN_SUPPORT == 1
 #include <Eigen/Core>
 #include "EigenInteropHelpers.h"
 #endif
 
 CUMAT_NAMESPACE_BEGIN
 
-namespace internal {
+namespace internal
+{
 
-	/**
-	 * \brief The storage for the matrix
-	 */
-	template <typename _Scalar, int _Rows, int _Columns, int _Batches>
-	class DenseStorage;
+/**
+    * \brief The storage for the matrix
+    */
+template <typename _Scalar, int _Rows, int _Columns, int _Batches>
+class DenseStorage;
 
-	//purely fixed size
-	template <typename _Scalar, int _Rows, int _Columns, int _Batches>
-	class DenseStorage
-	{
-		DevicePointer<_Scalar> data_;
-	public:
-		DenseStorage() : data_(Index(_Rows)* _Columns* _Batches) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_) {}
-		DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) data_ = other.data_;
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_(Index(_Rows)* _Columns* _Batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns && batches == _Batches);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns && batches == _Batches);
-		}
-		void swap(DenseStorage& other) { std::swap(data_, other.data_); }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index rows() { return _Rows; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index cols() { return _Columns; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index batches() { return _Batches; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+//purely fixed size
+template <typename _Scalar, int _Rows, int _Columns, int _Batches>
+class DenseStorage
+{
+    DevicePointer<_Scalar> data_;
 
-	//TODO: do I need specializations for null-matrices?
+  public:
+    DenseStorage()
+        : data_(Index(_Rows) * _Columns * _Batches)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+    {
+    }
+    DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+            data_ = other.data_;
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_(Index(_Rows) * _Columns * _Batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns && batches == _Batches);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns && batches == _Batches);
+    }
+    void swap(DenseStorage& other) { std::swap(data_, other.data_); }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index rows()
+    {
+        return _Rows;
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index cols()
+    {
+        return _Columns;
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index batches()
+    {
+        return _Batches;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
 
-	//partly dynamic size
+//TODO: do I need specializations for null-matrices?
 
-	//dynamic number of rows
-	template <typename _Scalar, int _Columns, int _Batches>
-	class DenseStorage<_Scalar, Dynamic, _Columns, _Batches>
-	{
-		DevicePointer<_Scalar> data_;
-		Index rows_;
-	public:
-		DenseStorage() : data_(), rows_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_), rows_(other.rows_) {}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				rows_ = other.rows_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_((rows >= 0 ? rows : 0)* _Columns* _Batches)
-			, rows_(rows)
-		{
-			CUMAT_ASSERT_ARGUMENT(cols == _Columns && batches == _Batches);
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, rows_(rows)
-		{
-			CUMAT_ASSERT_ARGUMENT(cols == _Columns && batches == _Batches);
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(rows_, other.rows_);
-		}
-		__host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index cols() { return _Columns; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index batches() { return _Batches; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+//partly dynamic size
 
-	//dynamic number of cols
-	template <typename _Scalar, int _Rows, int _Batches>
-	class DenseStorage<_Scalar, _Rows, Dynamic, _Batches>
-	{
-		DevicePointer<_Scalar> data_;
-		Index cols_;
-	public:
-		DenseStorage() : data_(), cols_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_), cols_(other.cols_) {}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				cols_ = other.cols_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_(_Rows* (cols >= 0 ? cols : 0)* _Batches)
-			, cols_(cols)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows && batches == _Batches);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, cols_(cols)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows && batches == _Batches);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(cols_, other.cols_);
-		}
-		static __host__ __device__ CUMAT_STRONG_INLINE Index rows() { return _Rows; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index batches() { return _Batches; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+//dynamic number of rows
+template <typename _Scalar, int _Columns, int _Batches>
+class DenseStorage<_Scalar, Dynamic, _Columns, _Batches>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  rows_;
 
-	//dynamic number of batches
-	template <typename _Scalar, int _Rows, int _Columns>
-	class DenseStorage<_Scalar, _Rows, _Columns, Dynamic>
-	{
-		DevicePointer<_Scalar> data_;
-		Index batches_;
-	public:
-		DenseStorage() : data_(), batches_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_), batches_(other.batches_) {}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				batches_ = other.batches_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_(Index(_Rows)* _Columns* (batches >= 0 ? batches : 0))
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(batches_, other.batches_);
-		}
-		static __host__ __device__ CUMAT_STRONG_INLINE Index rows() { return _Rows; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index cols() { return _Columns; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index batches() const { return batches_; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+  public:
+    DenseStorage()
+        : data_()
+        , rows_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , rows_(other.rows_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_ = other.data_;
+            rows_ = other.rows_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_((rows >= 0 ? rows : 0) * _Columns * _Batches)
+        , rows_(rows)
+    {
+        CUMAT_ASSERT_ARGUMENT(cols == _Columns && batches == _Batches);
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , rows_(rows)
+    {
+        CUMAT_ASSERT_ARGUMENT(cols == _Columns && batches == _Batches);
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(rows_, other.rows_);
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index cols()
+    {
+        return _Columns;
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index batches()
+    {
+        return _Batches;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
 
-	//dynamic number of rows and cols
-	template <typename _Scalar, int _Batches>
-	class DenseStorage<_Scalar, Dynamic, Dynamic, _Batches>
-	{
-		DevicePointer<_Scalar> data_;
-		Index rows_;
-		Index cols_;
-	public:
-		DenseStorage() : data_(), rows_(0), cols_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_), rows_(other.rows_), cols_(other.cols_) {}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				rows_ = other.rows_;
-				cols_ = other.cols_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_((rows >= 0 ? rows : 0)* (cols >= 0 ? cols : 0)* _Batches)
-			, rows_(rows)
-			, cols_(cols)
-		{
-			CUMAT_ASSERT_ARGUMENT(batches == _Batches);
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, rows_(rows)
-			, cols_(cols)
-		{
-			CUMAT_ASSERT_ARGUMENT(batches == _Batches);
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(rows_, other.rows_);
-			std::swap(cols_, other.cols_);
-		}
-		__host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index batches() { return _Batches; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+//dynamic number of cols
+template <typename _Scalar, int _Rows, int _Batches>
+class DenseStorage<_Scalar, _Rows, Dynamic, _Batches>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  cols_;
 
-	//dynamic number of rows and batches
-	template <typename _Scalar, int _Columns>
-	class DenseStorage<_Scalar, Dynamic, _Columns, Dynamic>
-	{
-		DevicePointer<_Scalar> data_;
-		Index rows_;
-		Index batches_;
-	public:
-		DenseStorage() : data_(), rows_(0), batches_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_), rows_(other.rows_), batches_(other.batches_) {}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				rows_ = other.rows_;
-				batches_ = other.batches_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_((rows >= 0 ? rows : 0)* _Columns* (batches >= 0 ? batches : 0))
-			, rows_(rows)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(cols == _Columns);
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, rows_(rows)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(cols == _Columns);
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(rows_, other.rows_);
-			std::swap(batches_, other.batches_);
-		}
-		__host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
-		static __host__ __device__ CUMAT_STRONG_INLINE Index cols() { return _Columns; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index batches() const { return batches_; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+  public:
+    DenseStorage()
+        : data_()
+        , cols_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , cols_(other.cols_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_ = other.data_;
+            cols_ = other.cols_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_(_Rows * (cols >= 0 ? cols : 0) * _Batches)
+        , cols_(cols)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows && batches == _Batches);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , cols_(cols)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows && batches == _Batches);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(cols_, other.cols_);
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index rows()
+    {
+        return _Rows;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index batches()
+    {
+        return _Batches;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
 
-	//dynamic number of cols and batches
-	template <typename _Scalar, int _Rows>
-	class DenseStorage<_Scalar, _Rows, Dynamic, Dynamic>
-	{
-		DevicePointer<_Scalar> data_;
-		Index cols_;
-		Index batches_;
-	public:
-		DenseStorage() : data_(), cols_(0), batches_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other) : data_(other.data_), cols_(other.cols_), batches_(other.batches_) {}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				cols_ = other.cols_;
-				batches_ = other.batches_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_(Index(_Rows)* (cols >= 0 ? cols : 0)* (batches >= 0 ? batches : 0))
-			, cols_(cols)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, cols_(cols)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows == _Rows);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(cols_, other.cols_);
-			std::swap(batches_, other.batches_);
-		}
-		static __host__ __device__ CUMAT_STRONG_INLINE Index rows() { return _Rows; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index batches() const { return batches_; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+//dynamic number of batches
+template <typename _Scalar, int _Rows, int _Columns>
+class DenseStorage<_Scalar, _Rows, _Columns, Dynamic>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  batches_;
 
-	//everything is dynamic
-	template <typename _Scalar>
-	class DenseStorage<_Scalar, Dynamic, Dynamic, Dynamic>
-	{
-		DevicePointer<_Scalar> data_;
-		Index rows_;
-		Index cols_;
-		Index batches_;
-	public:
-		DenseStorage() : data_(), rows_(0), cols_(0), batches_(0) {}
-		__host__ __device__
-			DenseStorage(const DenseStorage& other)
-			: data_(other.data_)
-			, rows_(other.rows_)
-			, cols_(other.cols_)
-			, batches_(other.batches_)
-		{}
-		__host__ __device__
-			DenseStorage& operator=(const DenseStorage& other)
-		{
-			if (this != &other) {
-				data_ = other.data_;
-				rows_ = other.rows_;
-				cols_ = other.cols_;
-				batches_ = other.batches_;
-			}
-			return *this;
-		}
-		DenseStorage(Index rows, Index cols, Index batches)
-			: data_((rows >= 0 ? rows : 0)* (cols >= 0 ? cols : 0)* (batches >= 0 ? batches : 0))
-			, rows_(rows)
-			, cols_(cols)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
-			: data_(data)
-			, rows_(rows)
-			, cols_(cols)
-			, batches_(batches)
-		{
-			CUMAT_ASSERT_ARGUMENT(rows >= 0);
-			CUMAT_ASSERT_ARGUMENT(cols >= 0);
-			CUMAT_ASSERT_ARGUMENT(batches >= 0);
-		}
-		void swap(DenseStorage& other) noexcept
-		{
-			std::swap(data_, other.data_);
-			std::swap(rows_, other.rows_);
-			std::swap(cols_, other.cols_);
-			std::swap(batches_, other.batches_);
-		}
-		__host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
-		__host__ __device__ CUMAT_STRONG_INLINE Index batches() const { return batches_; }
-		__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const { return data_.pointer(); }
-		__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data() { return data_.pointer(); }
-		CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const { return data_; }
-		CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
-	};
+  public:
+    DenseStorage()
+        : data_()
+        , batches_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , batches_(other.batches_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_    = other.data_;
+            batches_ = other.batches_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_(Index(_Rows) * _Columns * (batches >= 0 ? batches : 0))
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows && cols == _Columns);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(batches_, other.batches_);
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index rows()
+    {
+        return _Rows;
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index cols()
+    {
+        return _Columns;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index batches() const
+    {
+        return batches_;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
 
-	template <typename _Scalar, int _Rows, int _Columns, int _Batches, int _Flags>
-	struct traits<Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags> >
-	{
-		typedef _Scalar Scalar;
-		enum
-		{
-			Flags = _Flags,
-			RowsAtCompileTime = _Rows,
-			ColsAtCompileTime = _Columns,
-			BatchesAtCompileTime = _Batches,
-			AccessFlags = ReadCwise | ReadDirect | WriteCwise | WriteDirect | RWCwise | RWCwiseRef
-		};
-		typedef CwiseSrcTag SrcTag;
-		typedef DenseDstTag DstTag;
-	};
+//dynamic number of rows and cols
+template <typename _Scalar, int _Batches>
+class DenseStorage<_Scalar, Dynamic, Dynamic, _Batches>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  rows_;
+    Index                  cols_;
 
-} //end namespace internal
+  public:
+    DenseStorage()
+        : data_()
+        , rows_(0)
+        , cols_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , rows_(other.rows_)
+        , cols_(other.cols_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_ = other.data_;
+            rows_ = other.rows_;
+            cols_ = other.cols_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_((rows >= 0 ? rows : 0) * (cols >= 0 ? cols : 0) * _Batches)
+        , rows_(rows)
+        , cols_(cols)
+    {
+        CUMAT_ASSERT_ARGUMENT(batches == _Batches);
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , rows_(rows)
+        , cols_(cols)
+    {
+        CUMAT_ASSERT_ARGUMENT(batches == _Batches);
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(rows_, other.rows_);
+        std::swap(cols_, other.cols_);
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
+    __host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index batches()
+    {
+        return _Batches;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
+
+//dynamic number of rows and batches
+template <typename _Scalar, int _Columns>
+class DenseStorage<_Scalar, Dynamic, _Columns, Dynamic>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  rows_;
+    Index                  batches_;
+
+  public:
+    DenseStorage()
+        : data_()
+        , rows_(0)
+        , batches_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , rows_(other.rows_)
+        , batches_(other.batches_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_    = other.data_;
+            rows_    = other.rows_;
+            batches_ = other.batches_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_((rows >= 0 ? rows : 0) * _Columns * (batches >= 0 ? batches : 0))
+        , rows_(rows)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(cols == _Columns);
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , rows_(rows)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(cols == _Columns);
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(rows_, other.rows_);
+        std::swap(batches_, other.batches_);
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index cols()
+    {
+        return _Columns;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index batches() const
+    {
+        return batches_;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
+
+//dynamic number of cols and batches
+template <typename _Scalar, int _Rows>
+class DenseStorage<_Scalar, _Rows, Dynamic, Dynamic>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  cols_;
+    Index                  batches_;
+
+  public:
+    DenseStorage()
+        : data_()
+        , cols_(0)
+        , batches_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , cols_(other.cols_)
+        , batches_(other.batches_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_    = other.data_;
+            cols_    = other.cols_;
+            batches_ = other.batches_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_(Index(_Rows) * (cols >= 0 ? cols : 0) * (batches >= 0 ? batches : 0))
+        , cols_(cols)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , cols_(cols)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows == _Rows);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(cols_, other.cols_);
+        std::swap(batches_, other.batches_);
+    }
+    static __host__ __device__ CUMAT_STRONG_INLINE Index rows()
+    {
+        return _Rows;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
+    __host__ __device__ CUMAT_STRONG_INLINE Index batches() const
+    {
+        return batches_;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
+
+//everything is dynamic
+template <typename _Scalar>
+class DenseStorage<_Scalar, Dynamic, Dynamic, Dynamic>
+{
+    DevicePointer<_Scalar> data_;
+    Index                  rows_;
+    Index                  cols_;
+    Index                  batches_;
+
+  public:
+    DenseStorage()
+        : data_()
+        , rows_(0)
+        , cols_(0)
+        , batches_(0)
+    {
+    }
+    __host__ __device__ DenseStorage(const DenseStorage& other)
+        : data_(other.data_)
+        , rows_(other.rows_)
+        , cols_(other.cols_)
+        , batches_(other.batches_)
+    {
+    }
+    __host__ __device__ DenseStorage& operator=(const DenseStorage& other)
+    {
+        if(this != &other)
+        {
+            data_    = other.data_;
+            rows_    = other.rows_;
+            cols_    = other.cols_;
+            batches_ = other.batches_;
+        }
+        return *this;
+    }
+    DenseStorage(Index rows, Index cols, Index batches)
+        : data_((rows >= 0 ? rows : 0) * (cols >= 0 ? cols : 0) * (batches >= 0 ? batches : 0))
+        , rows_(rows)
+        , cols_(cols)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    DenseStorage(const DevicePointer<_Scalar>& data, Index rows, Index cols, Index batches)
+        : data_(data)
+        , rows_(rows)
+        , cols_(cols)
+        , batches_(batches)
+    {
+        CUMAT_ASSERT_ARGUMENT(rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(cols >= 0);
+        CUMAT_ASSERT_ARGUMENT(batches >= 0);
+    }
+    void swap(DenseStorage& other) noexcept
+    {
+        std::swap(data_, other.data_);
+        std::swap(rows_, other.rows_);
+        std::swap(cols_, other.cols_);
+        std::swap(batches_, other.batches_);
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return rows_; }
+    __host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return cols_; }
+    __host__ __device__ CUMAT_STRONG_INLINE Index batches() const
+    {
+        return batches_;
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.pointer();
+    }
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.pointer();
+    }
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_;
+    }
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer() { return data_; }
+};
+
+template <typename _Scalar, int _Rows, int _Columns, int _Batches, int _Flags>
+struct traits<Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>>
+{
+    typedef _Scalar Scalar;
+    enum
+    {
+        Flags                = _Flags,
+        RowsAtCompileTime    = _Rows,
+        ColsAtCompileTime    = _Columns,
+        BatchesAtCompileTime = _Batches,
+        AccessFlags = ReadCwise | ReadDirect | WriteCwise | WriteDirect | RWCwise | RWCwiseRef
+    };
+    typedef CwiseSrcTag SrcTag;
+    typedef DenseDstTag DstTag;
+};
+
+}  //end namespace internal
 
 /**
  * \brief The basic matrix class.
@@ -475,76 +664,78 @@ namespace internal {
  * \tparam _Flags a combination of flags from the \ref Flags enum.
  */
 template <typename _Scalar, int _Rows, int _Columns, int _Batches, int _Flags>
-class Matrix : public CwiseOp<Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags> >
-	//inheriting from CwiseOp instead MatrixBase allows it to be evaluated as cwise-operation into lvalues.
+class Matrix : public CwiseOp<Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>>
+//inheriting from CwiseOp instead MatrixBase allows it to be evaluated as cwise-operation into lvalues.
 {
-protected:
-	using Storage_t = internal::DenseStorage<_Scalar, _Rows, _Columns, _Batches>;
-	Storage_t data_;
-public:
+  protected:
+    using Storage_t = internal::DenseStorage<_Scalar, _Rows, _Columns, _Batches>;
+    Storage_t data_;
 
-	typedef Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags> Type;
-	typedef CwiseOp<Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags> > Base;
-	CUMAT_PUBLIC_API
-		enum
-	{
-		TransposedFlags = CUMAT_IS_COLUMN_MAJOR(Flags) ? RowMajor : ColumnMajor
-	};
-	using Base::size;
+  public:
+    typedef Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>          Type;
+    typedef CwiseOp<Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>> Base;
+    CUMAT_PUBLIC_API
+    enum
+    {
+        TransposedFlags = CUMAT_IS_COLUMN_MAJOR(Flags) ? RowMajor : ColumnMajor
+    };
+    using Base::size;
 
-	typedef Matrix<const _Scalar, _Rows, _Columns, _Batches, _Flags> ConstType;
-	typedef Matrix<typename std::remove_const<_Scalar>::type, _Rows, _Columns, _Batches, _Flags> NonConstType;
+    typedef Matrix<const _Scalar, _Rows, _Columns, _Batches, _Flags> ConstType;
+    typedef Matrix<typename std::remove_const<_Scalar>::type, _Rows, _Columns, _Batches, _Flags> NonConstType;
 
-	/**
-	 * \brief Default constructor.
-	 * For completely fixed-size matrices, this creates a matrix of that size.
-	 * For (fully or partially) dynamic matrices, creates a matrix of size 0.
-	 */
-	__host__
-		Matrix() {}
+    /**
+    * \brief Default constructor.
+    * For completely fixed-size matrices, this creates a matrix of that size.
+    * For (fully or partially) dynamic matrices, creates a matrix of size 0.
+    */
+    __host__ Matrix() {}
 
 #ifdef CUMAT_PARSED_BY_DOXYGEN
-	/**
+    /**
 	* \brief Creates a vector (row or column) of the specified size.
 	* This constructor is only allowed for compile-time row or column vectors with one batch and dynamic size.
 	* \param size the size of the vector
 	*/
-	explicit Matrix(Index size) {}
+    explicit Matrix(Index size) {}
 #else
-	template<typename T = std::enable_if<(_Rows == 1 && _Columns == Dynamic && _Batches == 1) || (_Columns == 1 && _Rows == Dynamic && _Batches == 1), Index>>
-	explicit Matrix(typename T::type size)
-		: data_(_Rows == 1 ? 1 : size, _Columns == 1 ? 1 : size, 1)
-	{}
+    template <typename T = std::enable_if<(_Rows == 1 && _Columns == Dynamic && _Batches == 1) || (_Columns == 1 && _Rows == Dynamic && _Batches == 1), Index>>
+    explicit Matrix(typename T::type size)
+        : data_(_Rows == 1 ? 1 : size, _Columns == 1 ? 1 : size, 1)
+    {
+    }
 #endif
 
 #ifdef CUMAT_PARSED_BY_DOXYGEN
-	/**
+    /**
 	* \brief Creates a matrix of the specified size.
 	* This constructor is only allowed for matrices with a batch size of one during compile time.
 	* \param rows the number of rows
 	* \param cols the number of batches
 	*/
-	Matrix(Index rows, Index cols) {}
+    Matrix(Index rows, Index cols) {}
 #else
-	template<typename T = std::enable_if<_Batches == 1, Index>>
-	Matrix(typename T::type rows, Index cols)
-		: data_(rows, cols, 1)
-	{}
+    template <typename T = std::enable_if<_Batches == 1, Index>>
+    Matrix(typename T::type rows, Index cols)
+        : data_(rows, cols, 1)
+    {
+    }
 #endif
 
-	/**
-	 * \brief Constructs a matrix.
-	 * If the number of rows, cols and batches are fixed on compile-time, they
-	 * must coincide with the sizes passed as arguments
-	 * \param rows the number of rows
-	 * \param cols the number of cols
-	 * \param batches the number of batches
-	 */
-	Matrix(Index rows, Index cols, Index batches)
-		: data_(rows, cols, batches)
-	{}
+    /**
+    * \brief Constructs a matrix.
+    * If the number of rows, cols and batches are fixed on compile-time, they
+    * must coincide with the sizes passed as arguments
+    * \param rows the number of rows
+    * \param cols the number of cols
+    * \param batches the number of batches
+    */
+    Matrix(Index rows, Index cols, Index batches)
+        : data_(rows, cols, batches)
+    {
+    }
 
-	/**
+    /**
 	* \brief Constructs a matrix with the given data.
 	* If the number of rows, cols and batches are fixed on compile-time, they
 	* must coincide with the sizes passed as arguments
@@ -552,97 +743,114 @@ public:
 	* \param cols the number of cols
 	* \param batches the number of batches
 	*/
-	Matrix(const DevicePointer<_Scalar>& ptr, Index rows, Index cols, Index batches)
-		: data_(ptr, rows, cols, batches)
-	{}
+    Matrix(const DevicePointer<_Scalar>& ptr, Index rows, Index cols, Index batches)
+        : data_(ptr, rows, cols, batches)
+    {
+    }
 
-	/**
-	 * \brief Returns the number of rows of this matrix.
-	 * \return the number of rows
-	 */
-	__host__ __device__ CUMAT_STRONG_INLINE Index rows() const { return data_.rows(); }
+    /**
+    * \brief Returns the number of rows of this matrix.
+    * \return the number of rows
+    */
+    __host__ __device__ CUMAT_STRONG_INLINE Index rows() const
+    {
+        return data_.rows();
+    }
 
-	/**
-	 * \brief Returns the number of columns of this matrix.
-	 * \return the number of columns
-	 */
-	__host__ __device__ CUMAT_STRONG_INLINE Index cols() const { return data_.cols(); }
+    /**
+    * \brief Returns the number of columns of this matrix.
+    * \return the number of columns
+    */
+    __host__ __device__ CUMAT_STRONG_INLINE Index cols() const
+    {
+        return data_.cols();
+    }
 
-	/**
-	 * \brief Returns the number of batches of this matrix.
-	 * \return the number of batches
-	 */
-	__host__ __device__ CUMAT_STRONG_INLINE Index batches() const { return data_.batches(); }
+    /**
+    * \brief Returns the number of batches of this matrix.
+    * \return the number of batches
+    */
+    __host__ __device__ CUMAT_STRONG_INLINE Index batches() const
+    {
+        return data_.batches();
+    }
 
-	// COEFFICIENT ACCESS
+    // COEFFICIENT ACCESS
 
-	/**
-	 * \brief Converts from the linear index back to row, column and batch index.
-	 * Requirement of \c AccessFlags::WriteCwise
-	 * \param index the linear index
-	 * \param row the row index (output)
-	 * \param col the column index (output)
-	 * \param batch the batch index (output)
-	 */
-	__host__ __device__ CUMAT_STRONG_INLINE void index(Index index, Index& row, Index& col, Index& batch) const
-	{
-		if (CUMAT_IS_ROW_MAJOR(Flags)) {
-			batch = index / (rows() * cols());
-			index -= batch * rows() * cols();
-			row = index / cols();
-			index -= row * cols();
-			col = index;
-		}
-		else {
-			batch = index / (rows() * cols());
-			index -= batch * rows() * cols();
-			col = index / rows();
-			index -= col * rows();
-			row = index;
-		}
-	}
+    /**
+    * \brief Converts from the linear index back to row, column and batch index.
+    * Requirement of \c AccessFlags::WriteCwise
+    * \param index the linear index
+    * \param row the row index (output)
+    * \param col the column index (output)
+    * \param batch the batch index (output)
+    */
+    __host__ __device__ CUMAT_STRONG_INLINE void index(Index  index,
+                                                       Index& row,
+                                                       Index& col,
+                                                       Index& batch) const
+    {
+        if(CUMAT_IS_ROW_MAJOR(Flags))
+        {
+            batch = index / (rows() * cols());
+            index -= batch * rows() * cols();
+            row = index / cols();
+            index -= row * cols();
+            col = index;
+        }
+        else
+        {
+            batch = index / (rows() * cols());
+            index -= batch * rows() * cols();
+            col = index / rows();
+            index -= col * rows();
+            row = index;
+        }
+    }
 
-	/**
-	 * \brief Computes the linear index from the three coordinates row, column and batch
-	 * \param row the row index
-	 * \param col the column index
-	 * \param batch the batch index
-	 * \return the linear index
-	 * \see setRawCoeff(Index, Scalar)
-	 */
-	__host__ __device__ CUMAT_STRONG_INLINE Index index(Index row, Index col, Index batch) const
-	{
-		CUMAT_ASSERT_CUDA(row >= 0);
-		CUMAT_ASSERT_CUDA(row < rows());
-		CUMAT_ASSERT_CUDA(col >= 0);
-		CUMAT_ASSERT_CUDA(col < cols());
-		CUMAT_ASSERT_CUDA(batch >= 0);
-		CUMAT_ASSERT_CUDA(batch < batches());
-		if (CUMAT_IS_ROW_MAJOR(Flags)) {
-			return col + cols() * (row + rows() * batch);
-		}
-		else {
-			return row + rows() * (col + cols() * batch);
-		}
-	}
+    /**
+    * \brief Computes the linear index from the three coordinates row, column and batch
+    * \param row the row index
+    * \param col the column index
+    * \param batch the batch index
+    * \return the linear index
+    * \see setRawCoeff(Index, Scalar)
+    */
+    __host__ __device__ CUMAT_STRONG_INLINE Index index(Index row, Index col, Index batch) const
+    {
+        CUMAT_ASSERT_CUDA(row >= 0);
+        CUMAT_ASSERT_CUDA(row < rows());
+        CUMAT_ASSERT_CUDA(col >= 0);
+        CUMAT_ASSERT_CUDA(col < cols());
+        CUMAT_ASSERT_CUDA(batch >= 0);
+        CUMAT_ASSERT_CUDA(batch < batches());
+        if(CUMAT_IS_ROW_MAJOR(Flags))
+        {
+            return col + cols() * (row + rows() * batch);
+        }
+        else
+        {
+            return row + rows() * (col + cols() * batch);
+        }
+    }
 
-	//TODO: optimized path: implement a method 'sameLayout' that uses the linear index
-	//directly instead of the row+col+batch.
+    //TODO: optimized path: implement a method 'sameLayout' that uses the linear index
+    //directly instead of the row+col+batch.
 
-	/**
-	 * \brief Accesses the coefficient at the specified coordinate for reading and writing.
-	 * If the device supports it (CUMAT_ASSERT_CUDA is defined), the
-	 * access is checked for out-of-bound tests by assertions.
-	 * \param row the row index
-	 * \param col the column index
-	 * \param batch the batch index
-	 * \return a reference to the entry
-	 */
-	__device__ CUMAT_STRONG_INLINE _Scalar& coeff(Index row, Index col, Index batch, Index /*index*/)
-	{
-		return data_.data()[index(row, col, batch)];
-	}
-	/**
+    /**
+    * \brief Accesses the coefficient at the specified coordinate for reading and writing.
+    * If the device supports it (CUMAT_ASSERT_CUDA is defined), the
+    * access is checked for out-of-bound tests by assertions.
+    * \param row the row index
+    * \param col the column index
+    * \param batch the batch index
+    * \return a reference to the entry
+    */
+    __device__ CUMAT_STRONG_INLINE _Scalar& coeff(Index row, Index col, Index batch, Index /*index*/)
+    {
+        return data_.data()[index(row, col, batch)];
+    }
+    /**
 	* \brief Accesses the coefficient at the specified coordinate for reading.
 	* If the device supports it (CUMAT_ASSERT_CUDA is defined), the
 	* access is checked for out-of-bound tests by assertions.
@@ -652,29 +860,29 @@ public:
 	* \param batch the batch index
 	* \return a read-only reference to the entry
 	*/
-	__device__ CUMAT_STRONG_INLINE _Scalar coeff(Index row, Index col, Index batch, Index /*index*/) const
-	{
-		Index idx = index(row, col, batch);
-		//printf("[Thread %06d] memread %p at %i\n", int(blockIdx.x * blockDim.x + threadIdx.x), data_.data(), int(idx));
-		return cuda::load(data_.data() + idx);
-	}
+    __device__ CUMAT_STRONG_INLINE _Scalar coeff(Index row, Index col, Index batch, Index /*index*/) const
+    {
+        Index idx = index(row, col, batch);
+        //printf("[Thread %06d] memread %p at %i\n", int(blockIdx.x * blockDim.x + threadIdx.x), data_.data(), int(idx));
+        return cuda::load(data_.data() + idx);
+    }
 
-	/**
-	 * \brief Access to the linearized coefficient, write-only.
-	 * The format of the indexing depends on whether this
-	 * matrix is column major (ColumnMajorBit) or row major (RowMajorBit).
-	 * Requirement of \c AccessFlags::WriteCwise
-	 * \param index the linearized index of the entry.
-	 * \param newValue the new value at that entry
-	 */
-	__device__ CUMAT_STRONG_INLINE void setRawCoeff(Index index, const _Scalar& newValue)
-	{
-		CUMAT_ASSERT_CUDA(index >= 0);
-		CUMAT_ASSERT_CUDA(index < size());
-		data_.data()[index] = newValue;
-	}
+    /**
+    * \brief Access to the linearized coefficient, write-only.
+    * The format of the indexing depends on whether this
+    * matrix is column major (ColumnMajorBit) or row major (RowMajorBit).
+    * Requirement of \c AccessFlags::WriteCwise
+    * \param index the linearized index of the entry.
+    * \param newValue the new value at that entry
+    */
+    __device__ CUMAT_STRONG_INLINE void setRawCoeff(Index index, const _Scalar& newValue)
+    {
+        CUMAT_ASSERT_CUDA(index >= 0);
+        CUMAT_ASSERT_CUDA(index < size());
+        data_.data()[index] = newValue;
+    }
 
-	/**
+    /**
 	* \brief Access to the linearized coefficient, read-only.
 	* The format of the indexing depends on whether this
 	* matrix is column major (ColumnMajorBit) or row major (RowMajorBit).
@@ -682,15 +890,15 @@ public:
 	* \param index the linearized index of the entry.
 	* \return the entry at that index
 	*/
-	__device__ CUMAT_STRONG_INLINE _Scalar getRawCoeff(Index index) const
-	{
-		CUMAT_ASSERT_CUDA(index >= 0);
-		CUMAT_ASSERT_CUDA(index < size());
-		//printf("[Thread %06d] memread %p at %i\n", int(blockIdx.x * blockDim.x + threadIdx.x), data_.data(), int(index));
-		return cuda::load(data_.data() + index);
-	}
+    __device__ CUMAT_STRONG_INLINE _Scalar getRawCoeff(Index index) const
+    {
+        CUMAT_ASSERT_CUDA(index >= 0);
+        CUMAT_ASSERT_CUDA(index < size());
+        //printf("[Thread %06d] memread %p at %i\n", int(blockIdx.x * blockDim.x + threadIdx.x), data_.data(), int(index));
+        return cuda::load(data_.data() + index);
+    }
 
-	/**
+    /**
 	* \brief Access to the linearized coefficient, read-only.
 	* The format of the indexing depends on whether this
 	* matrix is column major (ColumnMajorBit) or row major (RowMajorBit).
@@ -698,57 +906,57 @@ public:
 	* \param index the linearized index of the entry.
 	* \return the entry at that index
 	*/
-	__device__ CUMAT_STRONG_INLINE _Scalar& rawCoeff(Index index)
-	{
-		CUMAT_ASSERT_CUDA(index >= 0);
-		CUMAT_ASSERT_CUDA(index < size());
-		return data_.data()[index];
-	}
+    __device__ CUMAT_STRONG_INLINE _Scalar& rawCoeff(Index index)
+    {
+        CUMAT_ASSERT_CUDA(index >= 0);
+        CUMAT_ASSERT_CUDA(index < size());
+        return data_.data()[index];
+    }
 
-	/**
-	 * \brief Allows raw read and write access to the underlying buffer.
-	 * Requirement of \c AccessFlags::WriteDirect.
-	 * \return the underlying device buffer
-	 */
-	__host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
-	{
-		return data_.data();
-	}
+    /**
+    * \brief Allows raw read and write access to the underlying buffer.
+    * Requirement of \c AccessFlags::WriteDirect.
+    * \return the underlying device buffer
+    */
+    __host__ __device__ CUMAT_STRONG_INLINE _Scalar* data()
+    {
+        return data_.data();
+    }
 
-	/**
+    /**
 	* \brief Allows raw read-only access to the underlying buffer.
 	* Requirement of \c AccessFlags::ReadDirect.
 	* \return the underlying device buffer
 	*/
-	__host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
-	{
-		return data_.data();
-	}
+    __host__ __device__ CUMAT_STRONG_INLINE const _Scalar* data() const
+    {
+        return data_.data();
+    }
 
-	CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
-	{
-		return data_.dataPointer();
-	}
+    CUMAT_STRONG_INLINE const DevicePointer<_Scalar>& dataPointer() const
+    {
+        return data_.dataPointer();
+    }
 
-	CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer()
-	{
-		return data_.dataPointer();
-	}
+    CUMAT_STRONG_INLINE DevicePointer<_Scalar>& dataPointer()
+    {
+        return data_.dataPointer();
+    }
 
-	/**
-	 * \brief Checks if the this matrix has exclusive use to the underlying data, i.e. no other matrix expression shares the data.
-	 * This allows to check if this matrix is used in other expressions because that increments the internal reference counter.
-	 * If the internal reference counter is one, the matrix is nowhere else copied and this method returns true.
-	 *
-	 * This is used to determine if the matrix can be modified inplace.
-	 * \return
-	 */
-	CUMAT_STRONG_INLINE bool isExclusiveUse() const
-	{
-		return data_.dataPointer().getCounter() == 1;
-	}
+    /**
+    * \brief Checks if the this matrix has exclusive use to the underlying data, i.e. no other matrix expression shares the data.
+    * This allows to check if this matrix is used in other expressions because that increments the internal reference counter.
+    * If the internal reference counter is one, the matrix is nowhere else copied and this method returns true.
+    *
+    * This is used to determine if the matrix can be modified inplace.
+    * \return
+    */
+    CUMAT_STRONG_INLINE bool isExclusiveUse() const
+    {
+        return data_.dataPointer().getCounter() == 1;
+    }
 
-	/**
+    /**
 	* \brief Checks if the underlying data is used by an other matrix expression and if so,
 	* copies the data so that this matrix is the exclusive user of that data.
 	*
@@ -756,25 +964,30 @@ public:
 	*
 	* Postcondition: <code>isExclusiveUse() == true</code>
 	*/
-	void makeExclusiveUse()
-	{
-		if (isExclusiveUse()) return;
+    void makeExclusiveUse()
+    {
+        if(isExclusiveUse())
+            return;
 
-		DevicePointer<_Scalar> ptr = data_.dataPointer();
-		data_ = Storage_t(rows(), cols(), batches());
-		CUMAT_SAFE_CALL(cudaMemcpyAsync(data(), ptr.pointer(), sizeof(_Scalar) * rows() * cols() * batches(), cudaMemcpyDeviceToDevice, Context::current().stream()));
-		CUMAT_PROFILING_INC(MemcpyDeviceToDevice);
+        DevicePointer<_Scalar> ptr = data_.dataPointer();
+        data_                      = Storage_t(rows(), cols(), batches());
+        CUMAT_SAFE_CALL(cudaMemcpyAsync(data(),
+                                        ptr.pointer(),
+                                        sizeof(_Scalar) * rows() * cols() * batches(),
+                                        cudaMemcpyDeviceToDevice,
+                                        Context::current().stream()));
+        CUMAT_PROFILING_INC(MemcpyDeviceToDevice);
 
-		assert(isExclusiveUse());
-	}
+        assert(isExclusiveUse());
+    }
 
-	// COPY CALLS
+    // COPY CALLS
 
-	/**
-	 * \brief Initializes a matrix from the given fixed-size 3d array.
-	 * This is intended to be used for small tests.
-	 *
-	 * Example:
+    /**
+    * \brief Initializes a matrix from the given fixed-size 3d array.
+    * This is intended to be used for small tests.
+    *
+    * Example:
 	 \code
 	 int data[2][4][3] = {
 		{
@@ -795,109 +1008,119 @@ public:
 	REQUIRE(m.cols() == 3);
 	REQUIRE(m.batches() == 2);
 	\endcode
-	 *
-	 * Note that the returned matrix is always of row-major storage.
-	 * (This is how arrays are stored in C++)
-	 *
-	 * \tparam Rows the number of rows, infered from the passed argument
-	 * \tparam Cols the number of columns, infered from the passed argument
-	 * \tparam Batches the number of batches, infered from the passed argument
-	 * \param a the fixed-side 3d array used to initialize the matrix
-	 * \return A row-major matrix with the specified contents
-	 */
-	template<int Rows, int Cols, int Batches>
-	static Matrix<_Scalar, ((Rows > 1) ? Dynamic : 1), ((Cols > 1) ? Dynamic : 1), ((Batches > 1) ? Dynamic : 1), RowMajor>
-		fromArray(const _Scalar(&a)[Batches][Rows][Cols])
-	{
-		typedef Matrix<_Scalar, (Rows > 1) ? Dynamic : Rows, (Cols > 1) ? Dynamic : Cols, (Batches > 1) ? Dynamic : Batches, RowMajor> mt;
-		mt m(Rows, Cols, Batches);
-		m.copyFromHost((const _Scalar*)a);
-		CUMAT_PROFILING_INC(MemcpyHostToDevice);
-		return m;
-	}
+    *
+    * Note that the returned matrix is always of row-major storage.
+    * (This is how arrays are stored in C++)
+    *
+    * \tparam Rows the number of rows, infered from the passed argument
+    * \tparam Cols the number of columns, infered from the passed argument
+    * \tparam Batches the number of batches, infered from the passed argument
+    * \param a the fixed-side 3d array used to initialize the matrix
+    * \return A row-major matrix with the specified contents
+    */
+    template <int Rows, int Cols, int Batches>
+    static Matrix<_Scalar, ((Rows > 1) ? Dynamic : 1), ((Cols > 1) ? Dynamic : 1), ((Batches > 1) ? Dynamic : 1), RowMajor> fromArray(
+        const _Scalar (&a)[Batches][Rows][Cols])
+    {
+        typedef Matrix<_Scalar, (Rows > 1) ? Dynamic : Rows, (Cols > 1) ? Dynamic : Cols, (Batches > 1) ? Dynamic : Batches, RowMajor> mt;
+        mt m(Rows, Cols, Batches);
+        m.copyFromHost((const _Scalar*)a);
+        CUMAT_PROFILING_INC(MemcpyHostToDevice);
+        return m;
+    }
 
-	/**
-	 * \brief Performs a synchronous copy from host data into the
-	 * device memory of this matrix.
-	 * This copy is synchronized on the default stream,
-	 * hence synchronous to every computation but slow.
-	 * \param data the data to copy into this matrix
-	 */
-	void copyFromHost(const _Scalar* data)
-	{
-		//slower, conservative: full synchronization
-		//CUMAT_SAFE_CALL(cudaMemcpy(data_.data(), data, sizeof(_Scalar)*size(), cudaMemcpyHostToDevice));
-		//CUMAT_SAFE_CALL(cudaDeviceSynchronize());
+    /**
+    * \brief Performs a synchronous copy from host data into the
+    * device memory of this matrix.
+    * This copy is synchronized on the default stream,
+    * hence synchronous to every computation but slow.
+    * \param data the data to copy into this matrix
+    */
+    void copyFromHost(const _Scalar* data)
+    {
+        //slower, conservative: full synchronization
+        //CUMAT_SAFE_CALL(cudaMemcpy(data_.data(), data, sizeof(_Scalar)*size(), cudaMemcpyHostToDevice));
+        //CUMAT_SAFE_CALL(cudaDeviceSynchronize());
 
-		//faster: only synchronize this stream
-		CUMAT_SAFE_CALL(cudaMemcpyAsync(data_.data(), data, sizeof(_Scalar) * size(), cudaMemcpyHostToDevice, Context::current().stream()));
-		CUMAT_SAFE_CALL(cudaStreamSynchronize(Context::current().stream()));
+        //faster: only synchronize this stream
+        CUMAT_SAFE_CALL(cudaMemcpyAsync(data_.data(),
+                                        data,
+                                        sizeof(_Scalar) * size(),
+                                        cudaMemcpyHostToDevice,
+                                        Context::current().stream()));
+        CUMAT_SAFE_CALL(cudaStreamSynchronize(Context::current().stream()));
 
-		CUMAT_PROFILING_INC(MemcpyHostToDevice);
-	}
+        CUMAT_PROFILING_INC(MemcpyHostToDevice);
+    }
 
-	/**
+    /**
 	* \brief Performs a synchronous copy from the
 	* device memory of this matrix into the
 	* specified host memory
 	* This copy is synchronized on the default stream,
-	 * hence synchronous to every computation but slow.
+    * hence synchronous to every computation but slow.
 	* \param data the data in which the matrix is stored
 	*/
-	void copyToHost(_Scalar* data) const
-	{
-		//slower, conservative: full synchronization
-		//CUMAT_SAFE_CALL(cudaStreamSynchronize(Context::current().stream()));
-		//CUMAT_SAFE_CALL(cudaMemcpy(data, data_.data(), sizeof(_Scalar)*size(), cudaMemcpyDeviceToHost));
+    void copyToHost(_Scalar* data) const
+    {
+        //slower, conservative: full synchronization
+        //CUMAT_SAFE_CALL(cudaStreamSynchronize(Context::current().stream()));
+        //CUMAT_SAFE_CALL(cudaMemcpy(data, data_.data(), sizeof(_Scalar)*size(), cudaMemcpyDeviceToHost));
 
-		//faster: only synchronize this stream
-		CUMAT_SAFE_CALL(cudaMemcpyAsync(data, data_.data(), sizeof(_Scalar) * size(), cudaMemcpyDeviceToHost, Context::current().stream()));
-		CUMAT_SAFE_CALL(cudaStreamSynchronize(Context::current().stream()));
+        //faster: only synchronize this stream
+        CUMAT_SAFE_CALL(cudaMemcpyAsync(data,
+                                        data_.data(),
+                                        sizeof(_Scalar) * size(),
+                                        cudaMemcpyDeviceToHost,
+                                        Context::current().stream()));
+        CUMAT_SAFE_CALL(cudaStreamSynchronize(Context::current().stream()));
 
-		CUMAT_PROFILING_INC(MemcpyDeviceToHost);
-	}
+        CUMAT_PROFILING_INC(MemcpyDeviceToHost);
+    }
 
-	// EIGEN INTEROP
-#if CUMAT_EIGEN_SUPPORT==1
+    // EIGEN INTEROP
+#if CUMAT_EIGEN_SUPPORT == 1
 
-	/**
-	 * \brief The Eigen Matrix type that corresponds to this cuMat matrix.
-	 * Note that Eigen does not support batched matrices. Hence, you can
-	 * only convert cuMat matrices of batch size 1 (during compile time or runtime)
-	 * to Eigen.
-	 */
-	typedef typename CUMAT_NAMESPACE eigen::MatrixCuMatToEigen<Type>::type EigenMatrix_t;
+    /**
+    * \brief The Eigen Matrix type that corresponds to this cuMat matrix.
+    * Note that Eigen does not support batched matrices. Hence, you can
+    * only convert cuMat matrices of batch size 1 (during compile time or runtime)
+    * to Eigen.
+    */
+    typedef typename CUMAT_NAMESPACE eigen::MatrixCuMatToEigen<Type>::type EigenMatrix_t;
 
-	/**
-	 * \brief Converts this cuMat matrix to the corresponding Eigen matrix.
-	 * Note that Eigen does not support batched matrices. Hence, this
-	 * conversion is only possible, if<br>
-	 * a) the matrix has a compile-time batch size of 1, or<br>
-	 * b) the matrix has a dynamic batch size and the batch size is 1 during runtime.
-	 *
-	 * <p>
-	 * Design decision:<br>
-	 * Converting between cuMat and Eigen is done using synchronous memory copies.
-	 * It requires a complete synchronization of host and device. Therefore,
-	 * this operation is very expensive.<br>
-	 * Because of that, I decided to implement the conversion using
-	 * explicit methods (toEigen() and fromEigen(EigenMatrix_t)
-	 * instead of conversion operators or constructors.
-	 * It should be made clear to the reader that this operation
-	 * is expensive and should be used carfully, i.e. only to pass
-	 * data in and out before and after the computation.
-	 * \return the Eigen matrix with the contents of this matrix.
-	 */
-	EigenMatrix_t toEigen() const
-	{
-		CUMAT_STATIC_ASSERT(_Batches == 1 || _Batches == Dynamic, "Compile-time batches>1 not allowed. Eigen does not support batches");
-		if (_Batches == Dynamic) CUMAT_ASSERT_ARGUMENT(batches() == 1);
-		EigenMatrix_t mat(rows(), cols());
-		copyToHost(mat.data());
-		return mat;
-	}
+    /**
+    * \brief Converts this cuMat matrix to the corresponding Eigen matrix.
+    * Note that Eigen does not support batched matrices. Hence, this
+    * conversion is only possible, if<br>
+    * a) the matrix has a compile-time batch size of 1, or<br>
+    * b) the matrix has a dynamic batch size and the batch size is 1 during runtime.
+    *
+    * <p>
+    * Design decision:<br>
+    * Converting between cuMat and Eigen is done using synchronous memory copies.
+    * It requires a complete synchronization of host and device. Therefore,
+    * this operation is very expensive.<br>
+    * Because of that, I decided to implement the conversion using
+    * explicit methods (toEigen() and fromEigen(EigenMatrix_t)
+    * instead of conversion operators or constructors.
+    * It should be made clear to the reader that this operation
+    * is expensive and should be used carfully, i.e. only to pass
+    * data in and out before and after the computation.
+    * \return the Eigen matrix with the contents of this matrix.
+    */
+    EigenMatrix_t toEigen() const
+    {
+        CUMAT_STATIC_ASSERT(_Batches == 1 || _Batches == Dynamic,
+                            "Compile-time batches>1 not allowed. Eigen does not support batches");
+        if(_Batches == Dynamic)
+            CUMAT_ASSERT_ARGUMENT(batches() == 1);
+        EigenMatrix_t mat(rows(), cols());
+        copyToHost(mat.data());
+        return mat;
+    }
 
-	/**
+    /**
 	* \brief Converts the specified Eigen matrix into the
 	* corresponding cuMat matrix.
 	* Note that Eigen does not support batched matrices. Hence, this
@@ -919,121 +1142,132 @@ public:
 	* data in and out before and after the computation.
 	* \return the Eigen matrix with the contents of this matrix.
 	*/
-	static Type fromEigen(const EigenMatrix_t& mat)
-	{
-		CUMAT_STATIC_ASSERT(_Batches == 1 || _Batches == Dynamic, "Compile-time batches>1 not allowed. Eigen does not support batches");
-		Type m(mat.rows(), mat.cols());
-		m.copyFromHost(reinterpret_cast<const _Scalar*>(mat.data()));
-		return m;
-	}
+    static Type fromEigen(const EigenMatrix_t& mat)
+    {
+        CUMAT_STATIC_ASSERT(_Batches == 1 || _Batches == Dynamic,
+                            "Compile-time batches>1 not allowed. Eigen does not support batches");
+        Type m(mat.rows(), mat.cols());
+        m.copyFromHost(reinterpret_cast<const _Scalar*>(mat.data()));
+        return m;
+    }
 
 #endif
 
-	// ASSIGNMENT
+    // ASSIGNMENT
 
-	//template<typename OtherDerieved>
-	//CUMAT_STRONG_INLINE Derived& operator=(const MatrixBase<OtherDerieved>& other);
+    //template<typename OtherDerieved>
+    //CUMAT_STRONG_INLINE Derived& operator=(const MatrixBase<OtherDerieved>& other);
 
-	//assignments from other matrices: convert compile-size to dynamic
+    //assignments from other matrices: convert compile-size to dynamic
 
-	/**
-	 * \brief Shallow copy constructor, the underlying data is shared!!
-	 * This only works if the dimension other matrix is compatible with the
-	 * static dimension of this matrix.
-	 * \tparam _OtherRows
-	 * \tparam _OtherColumns
-	 * \tparam _OtherBatches
-	 * \tparam _OtherFlags
-	 * \param other
-	 */
-	template<int _OtherRows, int _OtherColumns, int _OtherBatches, int _OtherFlags>
-	__host__ Matrix(const Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, _OtherFlags>& other)
-		: data_(other.dataPointer(), other.rows(), other.cols(), other.batches()) //shallow copy
-	{
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Rows != Dynamic && _OtherRows != Dynamic, _OtherRows == _Rows),
-			"unable to assign a matrix to another matrix with a different compile time row count");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && _OtherColumns != Dynamic, _OtherColumns == _Columns),
-			"unable to assign a matrix to another matrix with a different compile time column count");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && _OtherBatches != Dynamic, _OtherBatches == _Batches),
-			"unable to assign a matrix to another matrix with a different compile time batch count");
+    /**
+    * \brief Shallow copy constructor, the underlying data is shared!!
+    * This only works if the dimension other matrix is compatible with the
+    * static dimension of this matrix.
+    * \tparam _OtherRows
+    * \tparam _OtherColumns
+    * \tparam _OtherBatches
+    * \tparam _OtherFlags
+    * \param other
+    */
+    template <int _OtherRows, int _OtherColumns, int _OtherBatches, int _OtherFlags>
+    __host__ Matrix(const Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, _OtherFlags>& other)
+        : data_(other.dataPointer(), other.rows(), other.cols(), other.batches())  //shallow copy
+    {
+        CUMAT_STATIC_ASSERT(
+            CUMAT_IMPLIES(_Rows != Dynamic && _OtherRows != Dynamic, _OtherRows == _Rows),
+            "unable to assign a matrix to another matrix with a different compile time row count");
+        CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && _OtherColumns != Dynamic,
+                                          _OtherColumns == _Columns),
+                            "unable to assign a matrix to another matrix with a different compile time column count");
+        CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && _OtherBatches != Dynamic,
+                                          _OtherBatches == _Batches),
+                            "unable to assign a matrix to another matrix with a different compile time batch count");
 
-		CUMAT_ASSERT_DIMENSION(CUMAT_IMPLIES(_Rows != Dynamic, _Rows == other.rows()));
-		CUMAT_ASSERT_DIMENSION(CUMAT_IMPLIES(_Columns != Dynamic, _Columns == other.cols()));
-		CUMAT_ASSERT_DIMENSION(CUMAT_IMPLIES(_Batches != Dynamic, _Batches == other.batches()));
+        CUMAT_ASSERT_DIMENSION(CUMAT_IMPLIES(_Rows != Dynamic, _Rows == other.rows()));
+        CUMAT_ASSERT_DIMENSION(
+            CUMAT_IMPLIES(_Columns != Dynamic, _Columns == other.cols()));
+        CUMAT_ASSERT_DIMENSION(
+            CUMAT_IMPLIES(_Batches != Dynamic, _Batches == other.batches()));
 
-		//Only allow implicit transposing if we have vectors
-		CUMAT_STATIC_ASSERT(_OtherFlags == _Flags || _Rows == 1 || _Columns == 1,
-			"unable to assign a matrix to another matrix with a different storage order, transpose them explicitly");
-	}
+        //Only allow implicit transposing if we have vectors
+        CUMAT_STATIC_ASSERT(_OtherFlags == _Flags || _Rows == 1 || _Columns == 1,
+                            "unable to assign a matrix to another matrix with a different storage order, transpose them explicitly");
+    }
 
-	/**
-	 * \brief Shallow assignment operator, the underlying data is shared!
-	 * The data of this matrix is replaced by the other matrix.
-	 * This only works if the dimension other matrix is compatible with the
-	 * static dimension of this matrix.
-	 * \tparam _OtherRows
-	 * \tparam _OtherColumns
-	 * \tparam _OtherBatches
-	 * \tparam _OtherFlags
-	 * \param other the other matrix
-	 * \return this
-	 */
-	template<int _OtherRows, int _OtherColumns, int _OtherBatches, int _OtherFlags>
-	CUMAT_STRONG_INLINE Type& operator=(const Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, _OtherFlags>& other)
-	{
-		CUMAT_STATIC_ASSERT(_Rows == Dynamic || _OtherRows == _Rows,
-			"unable to assign a matrix to another matrix with a different compile time row count");
-		CUMAT_STATIC_ASSERT(_Columns == Dynamic || _OtherColumns == _Columns,
-			"unable to assign a matrix to another matrix with a different compile time column count");
-		CUMAT_STATIC_ASSERT(_Batches == Dynamic || _OtherBatches == _Batches,
-			"unable to assign a matrix to another matrix with a different compile time batch count");
+    /**
+    * \brief Shallow assignment operator, the underlying data is shared!
+    * The data of this matrix is replaced by the other matrix.
+    * This only works if the dimension other matrix is compatible with the
+    * static dimension of this matrix.
+    * \tparam _OtherRows
+    * \tparam _OtherColumns
+    * \tparam _OtherBatches
+    * \tparam _OtherFlags
+    * \param other the other matrix
+    * \return this
+    */
+    template <int _OtherRows, int _OtherColumns, int _OtherBatches, int _OtherFlags>
+    CUMAT_STRONG_INLINE Type& operator=(
+        const Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, _OtherFlags>& other)
+    {
+        CUMAT_STATIC_ASSERT(_Rows == Dynamic || _OtherRows == _Rows,
+                            "unable to assign a matrix to another matrix with a different compile time row count");
+        CUMAT_STATIC_ASSERT(_Columns == Dynamic || _OtherColumns == _Columns,
+                            "unable to assign a matrix to another matrix with a different compile time column count");
+        CUMAT_STATIC_ASSERT(_Batches == Dynamic || _OtherBatches == _Batches,
+                            "unable to assign a matrix to another matrix with a different compile time batch count");
 
-		//Only allow implicit transposing if we have vectors
-		CUMAT_STATIC_ASSERT(_OtherFlags == _Flags || _Rows == 1 || _Columns == 1,
-			"unable to assign a matrix to another matrix with a different storage order, transpose them explicitly");
+        //Only allow implicit transposing if we have vectors
+        CUMAT_STATIC_ASSERT(_OtherFlags == _Flags || _Rows == 1 || _Columns == 1,
+                            "unable to assign a matrix to another matrix with a different storage order, transpose them explicitly");
 
-		// shallow copy
-		data_ = Storage_t(other.dataPointer(), other.rows(), other.cols(), other.batches());
+        // shallow copy
+        data_ = Storage_t(other.dataPointer(), other.rows(), other.cols(), other.batches());
 
-		return *this;
-	}
+        return *this;
+    }
 
-	// EVALUATIONS
+    // EVALUATIONS
 
-	/**
-	 * \brief Evaluation constructor, new memory is allocated for the result.
-	 * \tparam Derived
-	 * \param expr the matrix expression
-	 */
-	template<typename Derived>
-	Matrix(const MatrixBase<Derived>& expr)
-		: data_(expr.rows(), expr.cols(), expr.batches())
-	{
-		//expr.template evalTo<Type, AssignmentMode::ASSIGN>(*this);
-		internal::Assignment<Type, Derived, AssignmentMode::ASSIGN, internal::DenseDstTag, typename internal::traits<Derived>::SrcTag>::assign(*this, expr.derived());
-	}
+    /**
+    * \brief Evaluation constructor, new memory is allocated for the result.
+    * \tparam Derived
+    * \param expr the matrix expression
+    */
+    template <typename Derived>
+    Matrix(const MatrixBase<Derived>& expr)
+        : data_(expr.rows(), expr.cols(), expr.batches())
+    {
+        //expr.template evalTo<Type, AssignmentMode::ASSIGN>(*this);
+        internal::Assignment<Type, Derived, AssignmentMode::ASSIGN, internal::DenseDstTag, typename internal::traits<Derived>::SrcTag>::assign(
+            *this, expr.derived());
+    }
 
-	/**
-	 * \brief Evaluation assignment, new memory is allocated for the result.
-	 * Exception: if it can be guarantered, that the memory is used exclusivly (\ref isExclusiveUse() returns true),
-	 * and the size of this matrix and the result match, the memory is reuse.
-	 * \tparam Derived
-	 * \param expr
-	 * \return
-	 */
-	template<typename Derived>
-	CUMAT_STRONG_INLINE Type& operator=(const MatrixBase<Derived>& expr)
-	{
-		if (!isExclusiveUse() || rows() != expr.rows() || cols() != expr.cols() || batches() != expr.batches()) {
-			//allocate new memory for the result
-			data_ = Storage_t(expr.rows(), expr.cols(), expr.batches());
-		} //else: reuse memory
-		//expr.template evalTo<Type, AssignmentMode::ASSIGN>(*this);
-		internal::Assignment<Type, Derived, AssignmentMode::ASSIGN, internal::DenseDstTag, typename internal::traits<Derived>::SrcTag>::assign(*this, expr.derived());
-		return *this;
-	}
+    /**
+    * \brief Evaluation assignment, new memory is allocated for the result.
+    * Exception: if it can be guarantered, that the memory is used exclusivly (\ref isExclusiveUse() returns true),
+    * and the size of this matrix and the result match, the memory is reuse.
+    * \tparam Derived
+    * \param expr
+    * \return
+    */
+    template <typename Derived>
+    CUMAT_STRONG_INLINE Type& operator=(const MatrixBase<Derived>& expr)
+    {
+        if(!isExclusiveUse() || rows() != expr.rows() || cols() != expr.cols()
+           || batches() != expr.batches())
+        {
+            //allocate new memory for the result
+            data_ = Storage_t(expr.rows(), expr.cols(), expr.batches());
+        }  //else: reuse memory
+        //expr.template evalTo<Type, AssignmentMode::ASSIGN>(*this);
+        internal::Assignment<Type, Derived, AssignmentMode::ASSIGN, internal::DenseDstTag, typename internal::traits<Derived>::SrcTag>::assign(
+            *this, expr.derived());
+        return *this;
+    }
 
-#define CUMAT_COMPOUND_ASSIGNMENT(op, mode)                                                             \
+#define CUMAT_COMPOUND_ASSIGNMENT(op, mode)                                                                                                   \
     /**                                                                                                 \
     * \brief Compound-assignment with evaluation, modifies this matrix in-place.                        \
     * Warning: if this matrix shares the data with another matrix, this matrix is modified as well.     \
@@ -1045,48 +1279,48 @@ public:
     * \tparam Derived the type of the other expression                                                  \
     * \param expr the other expression                                                                  \
     * \return                                                                                           \
-    */                                                                                                  \
-    template<typename Derived>                                                                          \
-    CUMAT_STRONG_INLINE Type& op (const MatrixBase<Derived>& expr)                                      \
-    {                                                                                                   \
-        CUMAT_ERROR_IF_NO_NVCC(compoundAssignment)                                                      \
-        internal::Assignment<Type, Derived, AssignmentMode:: mode , internal::DenseDstTag, typename internal::traits<Derived>::SrcTag>::assign(*this, expr.derived());   \
-        return *this;                                                                                   \
+    */                                    \
+    template <typename Derived>                                                                                                               \
+    CUMAT_STRONG_INLINE Type& op(const MatrixBase<Derived>& expr)                                                                             \
+    {                                                                                                                                         \
+        CUMAT_ERROR_IF_NO_NVCC(compoundAssignment)                                                                                            \
+        internal::Assignment<Type, Derived, AssignmentMode::mode, internal::DenseDstTag, typename internal::traits<Derived>::SrcTag>::assign( \
+            *this, expr.derived());                                                                                                           \
+        return *this;                                                                                                                         \
     }
 
-	CUMAT_COMPOUND_ASSIGNMENT(operator+=, ADD)
-		CUMAT_COMPOUND_ASSIGNMENT(operator-=, SUB)
-		//CUMAT_COMPOUND_ASSIGNMENT(operator*=, MUL) //multiplication is ambigious: do you want cwise or matrix multiplication?
-		CUMAT_COMPOUND_ASSIGNMENT(operator/=, DIV)
-		CUMAT_COMPOUND_ASSIGNMENT(operator%=, MOD)
-		CUMAT_COMPOUND_ASSIGNMENT(operator&=, AND)
-		CUMAT_COMPOUND_ASSIGNMENT(operator|=, OR)
+    CUMAT_COMPOUND_ASSIGNMENT(operator+=, ADD)
+    CUMAT_COMPOUND_ASSIGNMENT(operator-=, SUB)
+    //CUMAT_COMPOUND_ASSIGNMENT(operator*=, MUL) //multiplication is ambigious: do you want cwise or matrix multiplication?
+    CUMAT_COMPOUND_ASSIGNMENT(operator/=, DIV)
+    CUMAT_COMPOUND_ASSIGNMENT(operator%=, MOD)
+    CUMAT_COMPOUND_ASSIGNMENT(operator&=, AND)
+    CUMAT_COMPOUND_ASSIGNMENT(operator|=, OR)
 
 #undef CUMAT_COMPOUND_ASSIGNMENT
 
-		/**
-		 * \brief Explicit overloading of \c operator*= for scalar right hand sides.
-		 * This is needed to disambiguate the difference between component-wise operations and matrix operations.
-		 * All other compount-assignment operators (+=, -=, /=, ...) act component-wise.
-		 *
-		 * The operator *= is special: if call with a scalar argument, it simply scales the argument;
-		 * if called with a matrix as argument, it performs an inplace matrix multiplication.
-		 * \tparam S the type of the scalar
-		 * \param scalar the scalar value
-		 * \return *this
-		 */
-		template<
-		typename S,
-		typename T = typename std::enable_if<CUMAT_NAMESPACE internal::canBroadcast<Scalar, S>::value, Type>::type >
-	CUMAT_STRONG_INLINE T& operator*= (const S& scalar)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(inplaceMultiplication)
-			using Expr = decltype(Type::Constant(rows(), cols(), batches(), scalar));
-		internal::Assignment<Type, Expr, AssignmentMode::MUL, internal::DenseDstTag, typename internal::traits<Expr>::SrcTag>::assign(*this, Type::Constant(rows(), cols(), batches(), scalar));
-		return *this;
-	}
+    /**
+    * \brief Explicit overloading of \c operator*= for scalar right hand sides.
+    * This is needed to disambiguate the difference between component-wise operations and matrix operations.
+    * All other compount-assignment operators (+=, -=, /=, ...) act component-wise.
+    *
+    * The operator *= is special: if call with a scalar argument, it simply scales the argument;
+    * if called with a matrix as argument, it performs an inplace matrix multiplication.
+    * \tparam S the type of the scalar
+    * \param scalar the scalar value
+    * \return *this
+    */
+    template <typename S, typename T = typename std::enable_if<CUMAT_NAMESPACE internal::canBroadcast<Scalar, S>::value, Type>::type>
+    CUMAT_STRONG_INLINE T& operator*=(const S& scalar)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(inplaceMultiplication)
+        using Expr = decltype(Type::Constant(rows(), cols(), batches(), scalar));
+        internal::Assignment<Type, Expr, AssignmentMode::MUL, internal::DenseDstTag, typename internal::traits<Expr>::SrcTag>::assign(
+            *this, Type::Constant(rows(), cols(), batches(), scalar));
+        return *this;
+    }
 
-	/**
+    /**
 	* \brief Explicit overloading of \c operator*= for matrix right hand sides.
 	* It performs an inplace matrix multiplication \code *this = *this * rhs \endcode.
 	* Note that \c rhs must be square because the size of *this must not change.
@@ -1098,151 +1332,174 @@ public:
 	* \param rhs the right hand side matrix
 	* \return *this
 	*/
-	template<typename _Derived>
-	CUMAT_STRONG_INLINE Type& operator*= (const MatrixBase<_Derived>& rhs)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(inplaceMatmul)
-			//check that the rhs is in fact square
-			CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(internal::traits<_Derived>::RowsAtCompileTime != Dynamic && internal::traits<_Derived>::ColsAtCompileTime != Dynamic,
-				internal::traits<_Derived>::RowsAtCompileTime == internal::traits<_Derived>::ColsAtCompileTime),
-				"The right hand side must be a static matrix");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && internal::traits<_Derived>::RowsAtCompileTime != Dynamic,
-			_Columns == internal::traits<_Derived>::RowsAtCompileTime),
-			"The right hand side is not compatible with this matrix");
-		CUMAT_ASSERT_DIMENSION(rhs.rows() == rhs.cols());
-		CUMAT_ASSERT_DIMENSION(cols() == rhs.rows());
-		//check that the batch size matches (broadcasting only over rhs)
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && internal::traits<_Derived>::BatchesAtCompileTime != Dynamic,
-			_Batches == internal::traits<_Derived>::BatchesAtCompileTime || internal::traits<_Derived>::BatchesAtCompileTime == 1),
-			"Batches must match or attempt to broadcast over this matrix");
-		CUMAT_ASSERT_DIMENSION(batches() == rhs.batches() || rhs.batches() == 1);
+    template <typename _Derived>
+    CUMAT_STRONG_INLINE Type& operator*=(const MatrixBase<_Derived>& rhs)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(inplaceMatmul)
+        //check that the rhs is in fact square
+        CUMAT_STATIC_ASSERT(
+            CUMAT_IMPLIES(internal::traits<_Derived>::RowsAtCompileTime != Dynamic
+                              && internal::traits<_Derived>::ColsAtCompileTime != Dynamic,
+                          internal::traits<_Derived>::RowsAtCompileTime
+                              == internal::traits<_Derived>::ColsAtCompileTime),
+            "The right hand side must be a static matrix");
+        CUMAT_STATIC_ASSERT(
+            CUMAT_IMPLIES(_Columns != Dynamic && internal::traits<_Derived>::RowsAtCompileTime != Dynamic,
+                          _Columns == internal::traits<_Derived>::RowsAtCompileTime),
+            "The right hand side is not compatible with this matrix");
+        CUMAT_ASSERT_DIMENSION(rhs.rows() == rhs.cols());
+        CUMAT_ASSERT_DIMENSION(cols() == rhs.rows());
+        //check that the batch size matches (broadcasting only over rhs)
+        CUMAT_STATIC_ASSERT(
+            CUMAT_IMPLIES(_Batches != Dynamic && internal::traits<_Derived>::BatchesAtCompileTime != Dynamic,
+                          _Batches == internal::traits<_Derived>::BatchesAtCompileTime
+                              || internal::traits<_Derived>::BatchesAtCompileTime == 1),
+            "Batches must match or attempt to broadcast over this matrix");
+        CUMAT_ASSERT_DIMENSION(batches() == rhs.batches() || rhs.batches() == 1);
 
-		//cuBLAS GEMM can't work inplace -> clone this and place the result inplace
-		inplace() = deepClone() * rhs;
+        //cuBLAS GEMM can't work inplace -> clone this and place the result inplace
+        inplace() = deepClone() * rhs;
 
-		return *this;
-	}
+        return *this;
+    }
 
-	/**
-	 * \brief Forces inplace assignment.
-	 * The only usecase is <code>matrix.inplace() = expression</code>
-	 * where the content's of matrix are overwritten inplace, even if the data is shared with
-	 * some other matrix instance.
-	 * Using the returned object in another context as directly as the left side of an assignment is
-	 * undefined behaviour.
-	 * The assignment will fail if the dimensions of this matrix and the expression don't match.
-	 * \return an expression to force inplace assignment
-	 */
-	internal::MatrixInplaceAssignment<Type> inplace()
-	{
-		return internal::MatrixInplaceAssignment<Type>(this);
-	}
+    /**
+    * \brief Forces inplace assignment.
+    * The only usecase is <code>matrix.inplace() = expression</code>
+    * where the content's of matrix are overwritten inplace, even if the data is shared with
+    * some other matrix instance.
+    * Using the returned object in another context as directly as the left side of an assignment is
+    * undefined behaviour.
+    * The assignment will fail if the dimensions of this matrix and the expression don't match.
+    * \return an expression to force inplace assignment
+    */
+    internal::MatrixInplaceAssignment<Type> inplace()
+    {
+        return internal::MatrixInplaceAssignment<Type>(this);
+    }
 
-private:
+  private:
+    template <int _OtherRows, int _OtherColumns, int _OtherBatches>
+    void deepCloneImpl(Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, Flags>& mat) const
+    {
+        //optimized path: direct memcpy
+        CUMAT_STATIC_ASSERT(
+            CUMAT_IMPLIES(_Rows != Dynamic && _OtherRows != Dynamic, _Rows == _OtherRows),
+            "unable to assign a matrix to another matrix with a different compile time row count");
+        CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && _OtherColumns != Dynamic,
+                                          _Columns == _OtherColumns),
+                            "unable to assign a matrix to another matrix with a different compile time column count");
+        CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && _OtherBatches != Dynamic,
+                                          _Batches == _OtherBatches),
+                            "unable to assign a matrix to another matrix with a different compile time row count");
 
-	template<int _OtherRows, int _OtherColumns, int _OtherBatches>
-	void deepCloneImpl(Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, Flags>& mat) const
-	{
-		//optimized path: direct memcpy
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Rows != Dynamic && _OtherRows != Dynamic, _Rows == _OtherRows),
-			"unable to assign a matrix to another matrix with a different compile time row count");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && _OtherColumns != Dynamic, _Columns == _OtherColumns),
-			"unable to assign a matrix to another matrix with a different compile time column count");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && _OtherBatches != Dynamic, _Batches == _OtherBatches),
-			"unable to assign a matrix to another matrix with a different compile time row count");
+        CUMAT_ASSERT(rows() == mat.rows());
+        CUMAT_ASSERT(cols() == mat.cols());
+        CUMAT_ASSERT(batches() == mat.batches());
 
-		CUMAT_ASSERT(rows() == mat.rows());
-		CUMAT_ASSERT(cols() == mat.cols());
-		CUMAT_ASSERT(batches() == mat.batches());
+        CUMAT_SAFE_CALL(cudaMemcpyAsync(mat.data(),
+                                        data(),
+                                        sizeof(_Scalar) * rows() * cols() * batches(),
+                                        cudaMemcpyDeviceToDevice,
+                                        Context::current().stream()));
+        CUMAT_PROFILING_INC(MemcpyDeviceToDevice);
+    }
 
-		CUMAT_SAFE_CALL(cudaMemcpyAsync(mat.data(), data(), sizeof(_Scalar) * rows() * cols() * batches(), cudaMemcpyDeviceToDevice, Context::current().stream()));
-		CUMAT_PROFILING_INC(MemcpyDeviceToDevice);
-	}
+    template <int _OtherRows, int _OtherColumns, int _OtherBatches>
+    void deepCloneImpl_directTranspose(
+        Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags>& mat,
+        std::integral_constant<bool, true>) const
+    {
+        //optimized path: direct transpose
+        CUMAT_STATIC_ASSERT(
+            CUMAT_IMPLIES(_Rows != Dynamic && _OtherRows != Dynamic, _Rows == _OtherRows),
+            "unable to assign a matrix to another matrix with a different compile time row count");
+        CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && _OtherColumns != Dynamic,
+                                          _Columns == _OtherColumns),
+                            "unable to assign a matrix to another matrix with a different compile time column count");
+        CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && _OtherBatches != Dynamic,
+                                          _Batches == _OtherBatches),
+                            "unable to assign a matrix to another matrix with a different compile time row count");
 
-	template<int _OtherRows, int _OtherColumns, int _OtherBatches>
-	void deepCloneImpl_directTranspose(Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags>& mat, std::integral_constant<bool, true>) const
-	{
-		//optimized path: direct transpose
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Rows != Dynamic && _OtherRows != Dynamic, _Rows == _OtherRows),
-			"unable to assign a matrix to another matrix with a different compile time row count");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Columns != Dynamic && _OtherColumns != Dynamic, _Columns == _OtherColumns),
-			"unable to assign a matrix to another matrix with a different compile time column count");
-		CUMAT_STATIC_ASSERT(CUMAT_IMPLIES(_Batches != Dynamic && _OtherBatches != Dynamic, _Batches == _OtherBatches),
-			"unable to assign a matrix to another matrix with a different compile time row count");
+        CUMAT_ASSERT(rows() == mat.rows());
+        CUMAT_ASSERT(cols() == mat.cols());
+        CUMAT_ASSERT(batches() == mat.batches());
 
-		CUMAT_ASSERT(rows() == mat.rows());
-		CUMAT_ASSERT(cols() == mat.cols());
-		CUMAT_ASSERT(batches() == mat.batches());
+        Index m = CUMAT_IS_ROW_MAJOR(Flags) ? rows() : cols();
+        Index n = CUMAT_IS_ROW_MAJOR(Flags) ? cols() : rows();
+        internal::directTranspose<_Scalar>(mat.data(), data(), m, n, batches());
+    }
+    template <int _OtherRows, int _OtherColumns, int _OtherBatches>
+    void deepCloneImpl_directTranspose(
+        Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags>& mat,
+        std::integral_constant<bool, false>) const
+    {
+        //cuBLAS is not available for that type
+        //default: cwise evaluation
+        typedef Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags> TargetType;
+        internal::Assignment<TargetType, Type, AssignmentMode::ASSIGN, internal::DenseDstTag, internal::CwiseSrcTag>::assign(
+            mat, *this);
+    }
 
-		Index m = CUMAT_IS_ROW_MAJOR(Flags) ? rows() : cols();
-		Index n = CUMAT_IS_ROW_MAJOR(Flags) ? cols() : rows();
-		internal::directTranspose<_Scalar>(mat.data(), data(), m, n, batches());
-	}
-	template<int _OtherRows, int _OtherColumns, int _OtherBatches>
-	void deepCloneImpl_directTranspose(Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags>& mat, std::integral_constant<bool, false>) const
-	{
-		//cuBLAS is not available for that type
-		//default: cwise evaluation
-		typedef Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags> TargetType;
-		internal::Assignment<TargetType, Type, AssignmentMode::ASSIGN, internal::DenseDstTag, internal::CwiseSrcTag>::assign(mat, *this);
-	}
+    template <int _OtherRows, int _OtherColumns, int _OtherBatches>
+    void deepCloneImpl(Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags>& mat) const
+    {
+        deepCloneImpl_directTranspose(
+            mat, std::integral_constant<bool, internal::NumTraits<_Scalar>::IsCudaNumeric>());
+    }
 
-	template<int _OtherRows, int _OtherColumns, int _OtherBatches>
-	void deepCloneImpl(Matrix<_Scalar, _OtherRows, _OtherColumns, _OtherBatches, TransposedFlags>& mat) const
-	{
-		deepCloneImpl_directTranspose(mat, std::integral_constant<bool, internal::NumTraits<_Scalar>::IsCudaNumeric>());
-	}
+    //template<typename Derived>
+    //void deepCloneImpl(MatrixBase<Derived>& m) const
+    //{
+    //    //default: cwise evaluation
+    //    internal::Assignment<Derived, Type, AssignmentMode::ASSIGN, internal::DenseDstTag, internal::CwiseSrcTag>::assign(m.derived(), *this);
+    //}
 
-	//template<typename Derived>
-	//void deepCloneImpl(MatrixBase<Derived>& m) const
-	//{
-	//    //default: cwise evaluation
-	//    internal::Assignment<Derived, Type, AssignmentMode::ASSIGN, internal::DenseDstTag, internal::CwiseSrcTag>::assign(m.derived(), *this);
-	//}
+  public:
+    /**
+    * \brief Performs a deep clone of the matrix.
+    * Usually, when you assign matrix instances, the underlying data is shared. This method explicitly copies the internal data
+    * of the matrix into a new matrix. The two matrices are then completely independent, i.e. if you perform an
+    * inplace modification on this or the returned matrix, the changes are not reflected in the other.
+    *
+    * Furthermore, this is the only option to explicitly change the storage mode:
+    * In cuMat, implicit transposition is not allowed when assigning matrices of different storage mode (column major vs. row major) to each other.
+    * This method, however, allows to specify the target storage mode.
+    * By default, this is the same as the current mode, resulting in a simple memcpy
+    *
+    * \tparam _TargetFlags the target storage mode (ColumnMajor or RowMajor). Default: the current storage mode
+    * \return the new matrix with a deep clone of the data
+    */
+    template <int _TargetFlags = _Flags>
+    CUMAT_STRONG_INLINE Matrix<_Scalar, _Rows, _Columns, _Batches, _TargetFlags> deepClone() const
+    {
+        Matrix<_Scalar, _Rows, _Columns, _Batches, _TargetFlags> mat(rows(), cols(), batches());
+        deepCloneImpl(mat);
+        return mat;
+    }
 
-public:
+    // STATIC METHODS AND OTHER HELPERS
+    /**
+    * \brief Sets all entries to zero.
+    * Warning: this operation works in-place and therefore violates the copy-on-write paradigm.
+    */
+    void setZero()
+    {
+        Index s = size();
+        if(s > 0)
+        {
+            CUMAT_SAFE_CALL(cudaMemsetAsync(
+                data(), 0, sizeof(_Scalar) * size(), Context::current().stream()));
+        }
+    }
 
-	/**
-	 * \brief Performs a deep clone of the matrix.
-	 * Usually, when you assign matrix instances, the underlying data is shared. This method explicitly copies the internal data
-	 * of the matrix into a new matrix. The two matrices are then completely independent, i.e. if you perform an
-	 * inplace modification on this or the returned matrix, the changes are not reflected in the other.
-	 *
-	 * Furthermore, this is the only option to explicitly change the storage mode:
-	 * In cuMat, implicit transposition is not allowed when assigning matrices of different storage mode (column major vs. row major) to each other.
-	 * This method, however, allows to specify the target storage mode.
-	 * By default, this is the same as the current mode, resulting in a simple memcpy
-	 *
-	 * \tparam _TargetFlags the target storage mode (ColumnMajor or RowMajor). Default: the current storage mode
-	 * \return the new matrix with a deep clone of the data
-	 */
-	template<int _TargetFlags = _Flags>
-	CUMAT_STRONG_INLINE Matrix<_Scalar, _Rows, _Columns, _Batches, _TargetFlags> deepClone() const
-	{
-		Matrix<_Scalar, _Rows, _Columns, _Batches, _TargetFlags> mat(rows(), cols(), batches());
-		deepCloneImpl(mat);
-		return mat;
-	}
+    // #include <MatrixNullaryOpsPlugin.inl>
 
-	// STATIC METHODS AND OTHER HELPERS
-	/**
-	 * \brief Sets all entries to zero.
-	 * Warning: this operation works in-place and therefore violates the copy-on-write paradigm.
-	 */
-	void setZero()
-	{
-		Index s = size();
-		if (s > 0) {
-			CUMAT_SAFE_CALL(cudaMemsetAsync(data(), 0, sizeof(_Scalar) * size(), Context::current().stream()));
-		}
-	}
+    template <typename _NullaryFunctor>
+    using NullaryOp_t =
+        NullaryOp<Scalar, Rows, Columns, Batches, Flags, _NullaryFunctor>;
 
-	// #include <MatrixNullaryOpsPlugin.inl>
-
-	template<typename _NullaryFunctor>
-	using NullaryOp_t = NullaryOp<Scalar, Rows, Columns, Batches, Flags, _NullaryFunctor >;
-
-	/**
+    /**
 	* \brief Creates a new matrix with all entries set to a constant value
 	* \param rows the number of rows
 	* \param cols the number of columns
@@ -1250,18 +1507,23 @@ public:
 	* \param value the value to fill
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Constant(Index rows, Index cols, Index batches, const Scalar& value)
-	{
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		if (Batches != Dynamic) CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			rows, cols, batches, functor::ConstantFunctor<Scalar>(value));
-	}
-	//Specialization for some often used cases
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Constant(Index rows,
+                                                                  Index cols,
+                                                                  Index batches,
+                                                                  const Scalar& value)
+    {
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        if(Batches != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            rows, cols, batches, functor::ConstantFunctor<Scalar>(value));
+    }
+    //Specialization for some often used cases
 
-	/**
+    /**
 	* \brief Creates a new matrix with all entries set to a constant value.
 	* This version is only available if the number of batches is fixed on compile-time.
 	* \param rows the number of rows
@@ -1269,17 +1531,20 @@ public:
 	* \param value the value to fill
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Constant(Index rows, Index cols, const Scalar& value)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic, "Number of batches must be fixed on compile-time");
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			rows, cols, Batches, functor::ConstantFunctor<Scalar>(value));
-	}
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Constant(Index rows,
+                                                                  Index cols,
+                                                                  const Scalar& value)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic, "Number of batches must be fixed on compile-time");
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            rows, cols, Batches, functor::ConstantFunctor<Scalar>(value));
+    }
 
-	/**
+    /**
 	* \brief Creates a new vector with all entries set to a constant value.
 	* This version is only available if the number of batches is fixed on compile-time,
 	* and either rows or columns are fixed on compile time.
@@ -1287,36 +1552,35 @@ public:
 	* \param value the value to fill
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Constant(Index size, const Scalar& value)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic
-			&& ((Rows == Dynamic && Columns != Dynamic) || (Rows != Dynamic && Columns == Dynamic)),
-			"Matrix must have a fixed compile-time batch size and compile-time row or column count (a vector)");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			Rows == Dynamic ? size : Rows,
-			Columns == Dynamic ? size : Columns,
-			Batches, functor::ConstantFunctor<Scalar>(value));
-	}
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Constant(Index size, const Scalar& value)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic
+                                && ((Rows == Dynamic && Columns != Dynamic)
+                                    || (Rows != Dynamic && Columns == Dynamic)),
+                            "Matrix must have a fixed compile-time batch size and compile-time row or column count (a vector)");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            Rows == Dynamic ? size : Rows,
+            Columns == Dynamic ? size : Columns,
+            Batches,
+            functor::ConstantFunctor<Scalar>(value));
+    }
 
-	/**
+    /**
 	* \brief Creates a new matrix with all entries set to a constant value.
 	* This version is only available if all sized (row, column, batch) are fixed on compile-time.
 	* \param value the value to fill
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Constant(const Scalar& value)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic && Rows != Dynamic && Columns != Dynamic,
-			"All dimensions must be fixed on compile-time for this function to be available");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			Rows, Columns, Batches, functor::ConstantFunctor<Scalar>(value));
-	}
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Constant(const Scalar& value)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic && Rows != Dynamic && Columns != Dynamic,
+                            "All dimensions must be fixed on compile-time for this function to be available");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            Rows, Columns, Batches, functor::ConstantFunctor<Scalar>(value));
+    }
 
 
-
-	/**
+    /**
 	* \brief generalized identity matrix.
 	* This matrix contains ones along the main diagonal and zeros everywhere else.
 	* The matrix must not necessarily be square.
@@ -1325,164 +1589,171 @@ public:
 	* \param batches the number of batches
 	* \return the operation that computes the identity matrix
 	*/
-	static NullaryOp_t<functor::IdentityFunctor<Scalar> >
-		Identity(Index rows, Index cols, Index batches)
-	{
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		if (Batches != Dynamic) CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
-		return NullaryOp_t<functor::IdentityFunctor<Scalar> >(
-			rows, cols, batches, functor::IdentityFunctor<Scalar>());
-	}
+    static NullaryOp_t<functor::IdentityFunctor<Scalar>> Identity(Index rows, Index cols, Index batches)
+    {
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        if(Batches != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
+        return NullaryOp_t<functor::IdentityFunctor<Scalar>>(
+            rows, cols, batches, functor::IdentityFunctor<Scalar>());
+    }
 
-	/**
+    /**
 	* \brief Generalized identity matrix.
 	* This version is only available if the number of batches is known on compile-time and rows and columns are dynamic.
 	* \param rows the number of rows
 	* \param cols the number of columns.
 	* \return  the operation that computes the identity matrix
 	*/
-	static NullaryOp_t<functor::IdentityFunctor<Scalar> >
-		Identity(Index rows, Index cols)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic, "Number of batches must be fixed on compile-time");
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		return NullaryOp_t<functor::IdentityFunctor<Scalar> >(
-			rows, cols, Batches, functor::IdentityFunctor<Scalar>());
-	}
-	/**
+    static NullaryOp_t<functor::IdentityFunctor<Scalar>> Identity(Index rows, Index cols)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic, "Number of batches must be fixed on compile-time");
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        return NullaryOp_t<functor::IdentityFunctor<Scalar>>(
+            rows, cols, Batches, functor::IdentityFunctor<Scalar>());
+    }
+    /**
 	* \brief Creates a square identity matrix.
 	* This version is only available if the number of batches is known on compile-time and rows and columns are dynamic.
 	* \param size the size of the matrix
 	* \return the operation that computes the identity matrix
 	*/
-	static NullaryOp_t<functor::IdentityFunctor<Scalar> >
-		Identity(Index size)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic
-			&& (Rows == Dynamic && Columns == Dynamic),
-			"This function can only be called on dynamic sized matrices with a fixed batch size");
-		return NullaryOp_t<functor::IdentityFunctor<Scalar> >(
-			size, size, Batches, functor::IdentityFunctor<Scalar>());
-	}
-	/**
+    static NullaryOp_t<functor::IdentityFunctor<Scalar>> Identity(Index size)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic && (Rows == Dynamic && Columns == Dynamic),
+                            "This function can only be called on dynamic sized matrices with a fixed batch size");
+        return NullaryOp_t<functor::IdentityFunctor<Scalar>>(
+            size, size, Batches, functor::IdentityFunctor<Scalar>());
+    }
+    /**
 	* \brief Creates the identity matrix.
 	* This version is only available if the number of rows, columns and batches are available at compile-time.
 	* Note that the matrix must not necessarily be square.
 	* \return  the operation that computes the identity matrix
 	*/
-	static NullaryOp_t<functor::IdentityFunctor<Scalar> >
-		Identity()
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic && Rows != Dynamic && Columns != Dynamic,
-			"This function can only be called on matrices with all dimensions fixed on compile-time");
-		return NullaryOp_t<functor::IdentityFunctor<Scalar> >(
-			Rows, Columns, Batches, functor::IdentityFunctor<Scalar>());
-	}
+    static NullaryOp_t<functor::IdentityFunctor<Scalar>> Identity()
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic && Rows != Dynamic && Columns != Dynamic,
+                            "This function can only be called on matrices with all dimensions fixed on compile-time");
+        return NullaryOp_t<functor::IdentityFunctor<Scalar>>(
+            Rows, Columns, Batches, functor::IdentityFunctor<Scalar>());
+    }
 
 
-	/**
+    /**
 	* \brief Creates a new matrix expression with all entries set to zero
 	* \param rows the number of rows
 	* \param cols the number of columns
 	* \param batches the number of batches
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Zero(Index rows, Index cols, Index batches)
-	{
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		if (Batches != Dynamic) CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			rows, cols, batches, functor::ConstantFunctor<Scalar>(_Scalar(0)));
-	}
-	//Specialization for some often used cases
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Zero(Index rows, Index cols, Index batches)
+    {
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        if(Batches != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            rows, cols, batches, functor::ConstantFunctor<Scalar>(_Scalar(0)));
+    }
+    //Specialization for some often used cases
 
-	/**
+    /**
 	* \brief Creates a new matrix expression with all entries set to zero.
 	* This version is only available if the number of batches is fixed on compile-time.
 	* \param rows the number of rows
 	* \param cols the number of columns
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Zero(Index rows, Index cols)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic, "Number of batches must be fixed on compile-time");
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			rows, cols, _Batches, functor::ConstantFunctor<Scalar>(Scalar(0)));
-	}
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Zero(Index rows, Index cols)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic, "Number of batches must be fixed on compile-time");
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            rows, cols, _Batches, functor::ConstantFunctor<Scalar>(Scalar(0)));
+    }
 
-	/**
+    /**
 	* \brief Creates a new vector with all entries set to zero.
 	* This version is only available if the number of batches is fixed on compile-time,
 	* and either rows or columns are fixed on compile time.
 	* \param size the size of the matrix along the free dimension
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Zero(Index size)
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic
-			&& ((Rows == Dynamic && Columns != Dynamic) || (Rows != Dynamic && Columns == Dynamic)),
-			"Matrix must have a fixed compile-time batch size and compile-time row or column count (a vector)");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			Rows == Dynamic ? size : Rows,
-			Columns == Dynamic ? size : Columns,
-			Batches, functor::ConstantFunctor<Scalar>(Scalar(0)));
-	}
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Zero(Index size)
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic
+                                && ((Rows == Dynamic && Columns != Dynamic)
+                                    || (Rows != Dynamic && Columns == Dynamic)),
+                            "Matrix must have a fixed compile-time batch size and compile-time row or column count (a vector)");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            Rows == Dynamic ? size : Rows,
+            Columns == Dynamic ? size : Columns,
+            Batches,
+            functor::ConstantFunctor<Scalar>(Scalar(0)));
+    }
 
-	/**
+    /**
 	* \brief Creates a new matrix with all entries set to zero.
 	* This version is only available if all sized (row, column, batch) are fixed on compile-time.
 	* \param value the value to fill
 	* \return the expression creating that matrix
 	*/
-	static NullaryOp_t<functor::ConstantFunctor<Scalar> >
-		Zero()
-	{
-		CUMAT_STATIC_ASSERT(Batches != Dynamic && Rows != Dynamic && Columns != Dynamic,
-			"All dimensions must be fixed on compile-time for this function to be available");
-		return NullaryOp_t<functor::ConstantFunctor<Scalar> >(
-			Rows, Columns, Batches, functor::ConstantFunctor<Scalar>(Scalar(0)));
-	}
+    static NullaryOp_t<functor::ConstantFunctor<Scalar>> Zero()
+    {
+        CUMAT_STATIC_ASSERT(Batches != Dynamic && Rows != Dynamic && Columns != Dynamic,
+                            "All dimensions must be fixed on compile-time for this function to be available");
+        return NullaryOp_t<functor::ConstantFunctor<Scalar>>(
+            Rows, Columns, Batches, functor::ConstantFunctor<Scalar>(Scalar(0)));
+    }
 
-	/**
-	 * \brief Custom nullary expression.
-	 * The nullary functor must look as follow:
-	 * \code
-	 * struct MyFunctor
-	 * {
-	 *     typedef OutputType ReturnType;
-	 *     __device__ CUMAT_STRONG_INLINE ReturnType operator()(Index row, Index col, Index batch) const
-	 *     {
-	 *         return ...
-	 *     }
-	 * };
-	 * \endcode
-	 * with \c OutputType being the type of the matrix on which this nullary op is called.
-	 */
-	template<typename Functor>
-	static NullaryOp_t<Functor>
-		NullaryExpr(Index rows, Index cols, Index batches, const Functor& functor = Functor())
-	{
-		if (Rows != Dynamic) CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
-		if (Columns != Dynamic) CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
-		if (Batches != Dynamic) CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
-		CUMAT_STATIC_ASSERT((std::is_same<typename Functor::ReturnType, Scalar>::value), "Functor must return the same type as the matrix it is called on");
-		return NullaryOp_t<Functor>(
-			rows, cols, batches, functor);
-	}
+    /**
+    * \brief Custom nullary expression.
+    * The nullary functor must look as follow:
+    * \code
+    * struct MyFunctor
+    * {
+    *     typedef OutputType ReturnType;
+    *     __device__ CUMAT_STRONG_INLINE ReturnType operator()(Index row, Index col, Index batch) const
+    *     {
+    *         return ...
+    *     }
+    * };
+    * \endcode
+    * with \c OutputType being the type of the matrix on which this nullary op is called.
+    */
+    template <typename Functor>
+    static NullaryOp_t<Functor> NullaryExpr(Index          rows,
+                                            Index          cols,
+                                            Index          batches,
+                                            const Functor& functor = Functor())
+    {
+        if(Rows != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Rows == rows && "runtime row count does not match compile time row count");
+        if(Columns != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Columns == cols && "runtime row count does not match compile time row count");
+        if(Batches != Dynamic)
+            CUMAT_ASSERT_ARGUMENT(Batches == batches && "runtime row count does not match compile time row count");
+        CUMAT_STATIC_ASSERT((std::is_same<typename Functor::ReturnType, Scalar>::value),
+                            "Functor must return the same type as the matrix it is called on");
+        return NullaryOp_t<Functor>(rows, cols, batches, functor);
+    }
 
 
+    // MatrixBlockPluginLvalue
 
-	// MatrixBlockPluginLvalue
-
-	/**
+    /**
 	* \brief Creates a block of the matrix of static size.
 	* By using this method, you can convert a dynamically-sized matrix into a statically sized one.
 	* This is the non-const version that also works as a lvalue reference. Hence, you can overwrite a part of the underlying matrix
@@ -1495,31 +1766,35 @@ public:
 	* \tparam NColumsn the number of columns of the block on compile time
 	* \tparam NBatches the number of batches of the block on compile time
 	*/
-	template<int NRows, int NColumns, int NBatches>
-	MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, Type>
-		block(Index start_row, Index start_column, Index start_batch, Index num_rows = NRows,
-			Index num_columns = NColumns, Index num_batches = NBatches)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(block)
-			CUMAT_ASSERT_ARGUMENT(NRows > 0 ? NRows == num_rows : true);
-		CUMAT_ASSERT_ARGUMENT(NColumns > 0 ? NColumns == num_columns : true);
-		CUMAT_ASSERT_ARGUMENT(NBatches > 0 ? NBatches == num_batches : true);
-		CUMAT_ASSERT_ARGUMENT(num_rows >= 0);
-		CUMAT_ASSERT_ARGUMENT(num_columns >= 0);
-		CUMAT_ASSERT_ARGUMENT(num_batches >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_row >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_column >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
-		CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
-		CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
-		return MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, Type>(
-			*this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
-	}
+    template <int NRows, int NColumns, int NBatches>
+    MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, Type> block(
+        Index start_row,
+        Index start_column,
+        Index start_batch,
+        Index num_rows    = NRows,
+        Index num_columns = NColumns,
+        Index num_batches = NBatches)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(block)
+        CUMAT_ASSERT_ARGUMENT(NRows > 0 ? NRows == num_rows : true);
+        CUMAT_ASSERT_ARGUMENT(NColumns > 0 ? NColumns == num_columns : true);
+        CUMAT_ASSERT_ARGUMENT(NBatches > 0 ? NBatches == num_batches : true);
+        CUMAT_ASSERT_ARGUMENT(num_rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(num_columns >= 0);
+        CUMAT_ASSERT_ARGUMENT(num_batches >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_row >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_column >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
+        CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
+        CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
+        return MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, Type>(
+            *this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
+    }
 
-	//most general version, dynamic size
+    //most general version, dynamic size
 
-	/**
+    /**
 	* \brief Creates a block of the matrix of dynamic size.
 	* This is the non-const version that also works as a lvalue reference. Hence, you can overwrite a part of the underlying matrix
 	* by setting the block to some new expression
@@ -1531,62 +1806,66 @@ public:
 	* \param num_columns the number of columns in the block
 	* \param num_batches the number of batches in the block
 	*/
-	MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, Type>
-		block(Index start_row, Index start_column, Index start_batch, Index num_rows, Index num_columns, Index num_batches)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(block)
-			CUMAT_ASSERT_ARGUMENT(start_row >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_column >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
-		CUMAT_ASSERT_ARGUMENT(num_rows > 0);
-		CUMAT_ASSERT_ARGUMENT(num_columns > 0);
-		CUMAT_ASSERT_ARGUMENT(num_batches > 0);
-		CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
-		CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
-		CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
-		return MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, Type>(
-			*this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
-	}
+    MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, Type> block(
+        Index start_row, Index start_column, Index start_batch, Index num_rows, Index num_columns, Index num_batches)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(block)
+        CUMAT_ASSERT_ARGUMENT(start_row >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_column >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
+        CUMAT_ASSERT_ARGUMENT(num_rows > 0);
+        CUMAT_ASSERT_ARGUMENT(num_columns > 0);
+        CUMAT_ASSERT_ARGUMENT(num_batches > 0);
+        CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
+        CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
+        CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
+        return MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, Type>(
+            *this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
+    }
 
 
-	//Const versions, taken from MatrixBlockPluginRvalue.h and adopted
+    //Const versions, taken from MatrixBlockPluginRvalue.h and adopted
 
-	/**
-	 * \brief Creates a block of the matrix of static size.
-	 * By using this method, you can convert a dynamically-sized matrix into a statically sized one.
-	 *
-	 * \param start_row the start row of the block (zero based)
-	 * \param start_column the start column of the block (zero based)
-	 * \param start_batch the start batch of the block (zero based)
-	 * \tparam NRows the number of rows of the block on compile time
-	 * \tparam NColumsn the number of columns of the block on compile time
-	 * \tparam NBatches the number of batches of the block on compile time
-	 */
-	template<int NRows, int NColumns, int NBatches>
-	MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, const Type>
-		block(Index start_row, Index start_column, Index start_batch, Index num_rows = NRows,
-			Index num_columns = NColumns, Index num_batches = NBatches) const
-	{
-		CUMAT_ERROR_IF_NO_NVCC(block)
-			CUMAT_ASSERT_ARGUMENT(NRows > 0 ? NRows == num_rows : true);
-		CUMAT_ASSERT_ARGUMENT(NColumns > 0 ? NColumns == num_columns : true);
-		CUMAT_ASSERT_ARGUMENT(NBatches > 0 ? NBatches == num_batches : true);
-		CUMAT_ASSERT_ARGUMENT(num_rows >= 0);
-		CUMAT_ASSERT_ARGUMENT(num_columns >= 0);
-		CUMAT_ASSERT_ARGUMENT(num_batches >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_row >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_column >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
-		CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
-		CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
-		return MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, const Type>(
-			*this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
-	}
+    /**
+    * \brief Creates a block of the matrix of static size.
+    * By using this method, you can convert a dynamically-sized matrix into a statically sized one.
+    *
+    * \param start_row the start row of the block (zero based)
+    * \param start_column the start column of the block (zero based)
+    * \param start_batch the start batch of the block (zero based)
+    * \tparam NRows the number of rows of the block on compile time
+    * \tparam NColumsn the number of columns of the block on compile time
+    * \tparam NBatches the number of batches of the block on compile time
+    */
+    template <int NRows, int NColumns, int NBatches>
+    MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, const Type> block(
+        Index start_row,
+        Index start_column,
+        Index start_batch,
+        Index num_rows    = NRows,
+        Index num_columns = NColumns,
+        Index num_batches = NBatches) const
+    {
+        CUMAT_ERROR_IF_NO_NVCC(block)
+        CUMAT_ASSERT_ARGUMENT(NRows > 0 ? NRows == num_rows : true);
+        CUMAT_ASSERT_ARGUMENT(NColumns > 0 ? NColumns == num_columns : true);
+        CUMAT_ASSERT_ARGUMENT(NBatches > 0 ? NBatches == num_batches : true);
+        CUMAT_ASSERT_ARGUMENT(num_rows >= 0);
+        CUMAT_ASSERT_ARGUMENT(num_columns >= 0);
+        CUMAT_ASSERT_ARGUMENT(num_batches >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_row >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_column >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
+        CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
+        CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
+        return MatrixBlock<_Scalar, NRows, NColumns, NBatches, _Flags, const Type>(
+            *this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
+    }
 
-	//most general version, dynamic size
+    //most general version, dynamic size
 
-	/**
+    /**
 	* \brief Creates a block of the matrix of dynamic size.
 	*
 	* \param start_row the start row of the block (zero based)
@@ -1596,401 +1875,391 @@ public:
 	* \param num_columns the number of columns in the block
 	* \param num_batches the number of batches in the block
 	*/
-	MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, const Type>
-		block(Index start_row, Index start_column, Index start_batch, Index num_rows, Index num_columns, Index num_batches) const
-	{
-		CUMAT_ERROR_IF_NO_NVCC(block)
-			CUMAT_ASSERT_ARGUMENT(start_row >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_column >= 0);
-		CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
-		CUMAT_ASSERT_ARGUMENT(num_rows > 0);
-		CUMAT_ASSERT_ARGUMENT(num_columns > 0);
-		CUMAT_ASSERT_ARGUMENT(num_batches > 0);
-		CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
-		CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
-		CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
-		return MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, const Type>(
-			*this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
-	}
+    MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, const Type> block(
+        Index start_row, Index start_column, Index start_batch, Index num_rows, Index num_columns, Index num_batches) const
+    {
+        CUMAT_ERROR_IF_NO_NVCC(block)
+        CUMAT_ASSERT_ARGUMENT(start_row >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_column >= 0);
+        CUMAT_ASSERT_ARGUMENT(start_batch >= 0);
+        CUMAT_ASSERT_ARGUMENT(num_rows > 0);
+        CUMAT_ASSERT_ARGUMENT(num_columns > 0);
+        CUMAT_ASSERT_ARGUMENT(num_batches > 0);
+        CUMAT_ASSERT_ARGUMENT(start_row + num_rows <= rows());
+        CUMAT_ASSERT_ARGUMENT(start_column + num_columns <= cols());
+        CUMAT_ASSERT_ARGUMENT(start_batch + num_batches <= batches());
+        return MatrixBlock<_Scalar, Dynamic, Dynamic, Dynamic, _Flags, const Type>(
+            *this, num_rows, num_columns, num_batches, start_row, start_column, start_batch);
+    }
 
 
-	/**
+    /**
 	* \brief Extracts a row out of the matrix.
 	* \param row the index of the row
 	*/
-	MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, const Type>
-		row(Index row) const
-	{
-		CUMAT_ERROR_IF_NO_NVCC(row)
-			CUMAT_ASSERT_ARGUMENT(row >= 0);
-		CUMAT_ASSERT_ARGUMENT(row < rows());
-		return MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, const Type>(
-			*this, 1, cols(), batches(), row, 0, 0);
-	}
-	/**
+    MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, const Type> row(Index row) const
+    {
+        CUMAT_ERROR_IF_NO_NVCC(row)
+        CUMAT_ASSERT_ARGUMENT(row >= 0);
+        CUMAT_ASSERT_ARGUMENT(row < rows());
+        return MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, const Type>(
+            *this, 1, cols(), batches(), row, 0, 0);
+    }
+    /**
 	* \brief Extracts a row out of the matrix.
 	* \param row the index of the row
 	*/
-	MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, Type>
-		row(Index row)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(row)
-			CUMAT_ASSERT_ARGUMENT(row >= 0);
-		CUMAT_ASSERT_ARGUMENT(row < rows());
-		return MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, Type>(
-			*this, 1, cols(), batches(), row, 0, 0);
-	}
+    MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, Type> row(Index row)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(row)
+        CUMAT_ASSERT_ARGUMENT(row >= 0);
+        CUMAT_ASSERT_ARGUMENT(row < rows());
+        return MatrixBlock<_Scalar, 1, _Columns, _Batches, _Flags, Type>(
+            *this, 1, cols(), batches(), row, 0, 0);
+    }
 
-	/**
+    /**
 	* \brief Extracts a column out of the matrix.
 	* \param col the index of the column
 	*/
-	MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, const Type>
-		col(Index column) const
-	{
-		CUMAT_ERROR_IF_NO_NVCC(col)
-			CUMAT_ASSERT_ARGUMENT(column >= 0);
-		CUMAT_ASSERT_ARGUMENT(column < cols());
-		return MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, const Type>(
-			*this, rows(), 1, batches(), 0, column, 0);
-	}
+    MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, const Type> col(Index column) const
+    {
+        CUMAT_ERROR_IF_NO_NVCC(col)
+        CUMAT_ASSERT_ARGUMENT(column >= 0);
+        CUMAT_ASSERT_ARGUMENT(column < cols());
+        return MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, const Type>(
+            *this, rows(), 1, batches(), 0, column, 0);
+    }
 
-	/**
+    /**
 	* \brief Extracts a column out of the matrix.
 	* \param col the index of the column
 	*/
-	MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, Type>
-		col(Index column)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(col)
-			CUMAT_ASSERT_ARGUMENT(column >= 0);
-		CUMAT_ASSERT_ARGUMENT(column < cols());
-		return MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, Type>(
-			*this, rows(), 1, batches(), 0, column, 0);
-	}
+    MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, Type> col(Index column)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(col)
+        CUMAT_ASSERT_ARGUMENT(column >= 0);
+        CUMAT_ASSERT_ARGUMENT(column < cols());
+        return MatrixBlock<_Scalar, _Rows, 1, _Batches, _Flags, Type>(
+            *this, rows(), 1, batches(), 0, column, 0);
+    }
 
-	/**
+    /**
 	* \brief Extracts a slice of a specific batch out of the batched matrix
 	* \param batch the index of the batch
 	*/
-	MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, const Type>
-		slice(Index batch) const
-	{
-		CUMAT_ERROR_IF_NO_NVCC(slice)
-			CUMAT_ASSERT_ARGUMENT(batch >= 0);
-		CUMAT_ASSERT_ARGUMENT(batch < batches());
-		return MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, const Type>(
-			*this, rows(), cols(), 1, 0, 0, batch);
-	}
-	/**
+    MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, const Type> slice(Index batch) const
+    {
+        CUMAT_ERROR_IF_NO_NVCC(slice)
+        CUMAT_ASSERT_ARGUMENT(batch >= 0);
+        CUMAT_ASSERT_ARGUMENT(batch < batches());
+        return MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, const Type>(
+            *this, rows(), cols(), 1, 0, 0, batch);
+    }
+    /**
 	* \brief Extracts a slice of a specific batch out of the batched matrix
 	* \param batch the index of the batch
 	*/
-	MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, Type>
-		slice(Index batch)
-	{
-		CUMAT_ERROR_IF_NO_NVCC(slice)
-			CUMAT_ASSERT_ARGUMENT(batch >= 0);
-		CUMAT_ASSERT_ARGUMENT(batch < batches());
-		return MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, Type>(
-			*this, rows(), cols(), 1, 0, 0, batch);
-	}
+    MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, Type> slice(Index batch)
+    {
+        CUMAT_ERROR_IF_NO_NVCC(slice)
+        CUMAT_ASSERT_ARGUMENT(batch >= 0);
+        CUMAT_ASSERT_ARGUMENT(batch < batches());
+        return MatrixBlock<_Scalar, _Rows, _Columns, 1, _Flags, Type>(
+            *this, rows(), cols(), 1, 0, 0, batch);
+    }
 
-	// Vector operations
+    // Vector operations
 
-private:
-	template<int N>
-	MatrixBlock<_Scalar, N, 1, _Batches, _Flags, const Type>
-		segmentHelper(Index start, std::true_type) const
-	{
-		//column vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + N <= rows());
-		return MatrixBlock<_Scalar, N, 1, _Batches, _Flags, const Type>(
-			*this, N, 1, batches(), start, 0, 0);
-	}
-	template<int N>
-	MatrixBlock<_Scalar, N, 1, _Batches, _Flags, Type>
-		segmentHelper(Index start, std::true_type)
-	{
-		//column vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + N <= rows());
-		return MatrixBlock<_Scalar, N, 1, _Batches, _Flags, Type>(
-			*this, N, 1, batches(), start, 0, 0);
-	}
+  private:
+    template <int N>
+    MatrixBlock<_Scalar, N, 1, _Batches, _Flags, const Type> segmentHelper(Index start,
+                                                                           std::true_type) const
+    {
+        //column vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + N <= rows());
+        return MatrixBlock<_Scalar, N, 1, _Batches, _Flags, const Type>(
+            *this, N, 1, batches(), start, 0, 0);
+    }
+    template <int N>
+    MatrixBlock<_Scalar, N, 1, _Batches, _Flags, Type> segmentHelper(Index start, std::true_type)
+    {
+        //column vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + N <= rows());
+        return MatrixBlock<_Scalar, N, 1, _Batches, _Flags, Type>(
+            *this, N, 1, batches(), start, 0, 0);
+    }
 
-	template<int N>
-	MatrixBlock< _Scalar, 1, N, _Batches, _Flags, const Type>
-		segmentHelper(Index start, std::false_type) const
-	{
-		//row vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + N <= cols());
-		return MatrixBlock<_Scalar, 1, N, _Batches, _Flags, const Type>(
-			*this, 1, N, batches(), 0, start, 0);
-	}
-	template<int N>
-	MatrixBlock< _Scalar, 1, N, _Batches, _Flags, Type>
-		segmentHelper(Index start, std::false_type)
-	{
-		//row vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + N <= cols());
-		return MatrixBlock<_Scalar, 1, N, _Batches, _Flags, Type>(
-			*this, 1, N, batches(), 0, start, 0);
-	}
+    template <int N>
+    MatrixBlock<_Scalar, 1, N, _Batches, _Flags, const Type> segmentHelper(Index start,
+                                                                           std::false_type) const
+    {
+        //row vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + N <= cols());
+        return MatrixBlock<_Scalar, 1, N, _Batches, _Flags, const Type>(
+            *this, 1, N, batches(), 0, start, 0);
+    }
+    template <int N>
+    MatrixBlock<_Scalar, 1, N, _Batches, _Flags, Type> segmentHelper(Index start, std::false_type)
+    {
+        //row vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + N <= cols());
+        return MatrixBlock<_Scalar, 1, N, _Batches, _Flags, Type>(
+            *this, 1, N, batches(), 0, start, 0);
+    }
 
-public:
-
-	/**
+  public:
+    /**
 	* \brief Extracts a fixed-size segment of the vector.
 	*   Only available for vectors
 	* \param start the start position of the segment
 	* \tparam N the length of the segment
 	*/
-	template<int N>
-	auto //FixedVectorSegmentXpr<N>::Type
-		segment(Index start) const -> decltype(segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>()))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(segment)
-			CUMAT_STATIC_ASSERT(
-				(_Rows == 1 || _Columns == 1),
-				"segment can only act on compile-time vectors");
-		return segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>());
-	}
+    template <int N>
+    auto  //FixedVectorSegmentXpr<N>::Type
+    segment(Index start) const
+        -> decltype(segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>()))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(segment)
+        CUMAT_STATIC_ASSERT((_Rows == 1 || _Columns == 1),
+                            "segment can only act on compile-time vectors");
+        return segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>());
+    }
 
-	/**
+    /**
 	* \brief Extracts a fixed-size segment of the vector.
 	*   Only available for vectors.
 	*   Non-const version, allows to modify the vector.
 	* \param start the start position of the segment
 	* \tparam N the length of the segment
 	*/
-	template<int N>
-	auto //FixedVectorSegmentXpr<N>::Type
-		segment(Index start) -> decltype(segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>()))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(segment)
-			CUMAT_STATIC_ASSERT(
-				(_Rows == 1 || _Columns == 1),
-				"segment can only act on compile-time vectors");
-		return segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>());
-	}
+    template <int N>
+    auto  //FixedVectorSegmentXpr<N>::Type
+    segment(Index start)
+        -> decltype(segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>()))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(segment)
+        CUMAT_STATIC_ASSERT((_Rows == 1 || _Columns == 1),
+                            "segment can only act on compile-time vectors");
+        return segmentHelper<N>(start, std::integral_constant<bool, _Columns == 1>());
+    }
 
-	/**
-	 * \brief Extracts a fixed-size segment from the head of the vector.
-	 * Only available for vectors
-	 * \tparam N the length of the segment
-	 */
-	template<int N>
-	auto head() const -> decltype(segment<N>(0))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(head)
-			return segment<N>(0);
-	}
-	/**
+    /**
+    * \brief Extracts a fixed-size segment from the head of the vector.
+    * Only available for vectors
+    * \tparam N the length of the segment
+    */
+    template <int N>
+    auto head() const -> decltype(segment<N>(0))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(head)
+        return segment<N>(0);
+    }
+    /**
 	* \brief Extracts a fixed-size segment from the head of the vector.
 	* Only available for vectors.
 	* Non-const version
 	* \tparam N the length of the segment
 	*/
-	template<int N>
-	auto head() -> decltype(segment<N>(0))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(head)
-			return segment<N>(0);
-	}
+    template <int N>
+    auto head() -> decltype(segment<N>(0))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(head)
+        return segment<N>(0);
+    }
 
-	/**
+    /**
 	* \brief Extracts a fixed-size segment from the tail of the vector.
 	* Only available for vectors
 	* \tparam N the length of the segment
 	*/
-	template<int N>
-	auto tail() const -> decltype(segment<N>(0))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(tail)
-			return segment<N>(std::max(rows(), cols()) - N);
-	}
-	/**
+    template <int N>
+    auto tail() const -> decltype(segment<N>(0))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(tail)
+        return segment<N>(std::max(rows(), cols()) - N);
+    }
+    /**
 	* \brief Extracts a fixed-size segment from the tail of the vector.
 	* Only available for vectors.
 	* Non-const version
 	* \tparam N the length of the segment
 	*/
-	template<int N>
-	auto tail() -> decltype(segment<N>(0))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(tail)
-			return segment<N>(std::max(rows(), cols()) - N);
-	}
+    template <int N>
+    auto tail() -> decltype(segment<N>(0))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(tail)
+        return segment<N>(std::max(rows(), cols()) - N);
+    }
 
-private:
-	MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, const Type>
-		segmentHelper(Index start, Index length, std::true_type) const
-	{
-		//column vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + length <= rows());
-		return MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, const Type>(
-			*this, length, 1, batches(), start, 0, 0);
-	}
-	MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, Type>
-		segmentHelper(Index start, Index length, std::true_type)
-	{
-		//column vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + length <= rows());
-		return MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, Type>(
-			*this, length, 1, batches(), start, 0, 0);
-	}
-	MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, const Type>
-		segmentHelper(Index start, Index length, std::false_type) const
-	{
-		//row vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + length <= cols());
-		return MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, const Type>(
-			*this, 1, length, batches(), 0, start, 0);
-	}
-	MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, Type>
-		segmentHelper(Index start, Index length, std::false_type)
-	{
-		//row vector
-		CUMAT_ASSERT_ARGUMENT(start >= 0);
-		CUMAT_ASSERT_ARGUMENT(start + length <= cols());
-		return MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, Type>(
-			*this, 1, length, batches(), 0, start, 0);
-	}
+  private:
+    MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, const Type> segmentHelper(
+        Index start, Index length, std::true_type) const
+    {
+        //column vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + length <= rows());
+        return MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, const Type>(
+            *this, length, 1, batches(), start, 0, 0);
+    }
+    MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, Type> segmentHelper(Index start,
+                                                                           Index length,
+                                                                           std::true_type)
+    {
+        //column vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + length <= rows());
+        return MatrixBlock<_Scalar, Dynamic, 1, _Batches, _Flags, Type>(
+            *this, length, 1, batches(), start, 0, 0);
+    }
+    MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, const Type> segmentHelper(
+        Index start, Index length, std::false_type) const
+    {
+        //row vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + length <= cols());
+        return MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, const Type>(
+            *this, 1, length, batches(), 0, start, 0);
+    }
+    MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, Type> segmentHelper(Index start,
+                                                                           Index length,
+                                                                           std::false_type)
+    {
+        //row vector
+        CUMAT_ASSERT_ARGUMENT(start >= 0);
+        CUMAT_ASSERT_ARGUMENT(start + length <= cols());
+        return MatrixBlock<_Scalar, 1, Dynamic, _Batches, _Flags, Type>(
+            *this, 1, length, batches(), 0, start, 0);
+    }
 
-public:
-	/**
+  public:
+    /**
 	* \brief Extracts a dynamic-size segment of the vector.
 	*   Only available for vectors
 	* \param start the start position of the segment
 	* \param length the length of the segment
 	*/
-	auto
-		segment(Index start, Index length) const -> decltype(segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>()))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(segment)
-			CUMAT_STATIC_ASSERT(
-				(_Rows == 1 || _Columns == 1),
-				"segment can only act on compile-time vectors");
-		return segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>());
-	}
-	/**
+    auto segment(Index start, Index length) const
+        -> decltype(segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>()))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(segment)
+        CUMAT_STATIC_ASSERT((_Rows == 1 || _Columns == 1),
+                            "segment can only act on compile-time vectors");
+        return segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>());
+    }
+    /**
 	* \brief Extracts a dynamic-size segment of the vector.
 	*   Only available for vectors.
 	*  Non-const version
 	* \param start the start position of the segment
 	* \param length the length of the segment
 	*/
-	auto
-		segment(Index start, Index length) -> decltype(segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>()))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(segment)
-			CUMAT_STATIC_ASSERT(
-				(_Rows == 1 || _Columns == 1),
-				"segment can only act on compile-time vectors");
-		return segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>());
-	}
+    auto segment(Index start, Index length)
+        -> decltype(segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>()))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(segment)
+        CUMAT_STATIC_ASSERT((_Rows == 1 || _Columns == 1),
+                            "segment can only act on compile-time vectors");
+        return segmentHelper(start, length, std::integral_constant<bool, _Columns == 1>());
+    }
 
-	/**
+    /**
 	* \brief Extracts a dynamic-size segment from the head of the vector.
 	* Only available for vectors
 	* \param length the length of the segment
 	*/
-	auto head(Index length) const -> decltype(segment(0, length))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(head)
-			return segment(0, length);
-	}
-	/**
+    auto head(Index length) const -> decltype(segment(0, length))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(head)
+        return segment(0, length);
+    }
+    /**
 	* \brief Extracts a dynamic-size segment from the head of the vector.
 	* Only available for vectors.
 	* Non-const version.
 	* \param length the length of the segment
 	*/
-	auto head(Index length) -> decltype(segment(0, length))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(head)
-			return segment(0, length);
-	}
+    auto head(Index length) -> decltype(segment(0, length))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(head)
+        return segment(0, length);
+    }
 
-	/**
+    /**
 	* \brief Extracts a dynamic-size segment from the tail of the vector.
 	* Only available for vectors
 	* \param length the length of the segment
 	*/
-	auto tail(Index length) const -> decltype(segment(0, length))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(tail)
-			return segment(std::max(rows(), cols()) - length, length);
-	}
-	/**
+    auto tail(Index length) const -> decltype(segment(0, length))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(tail)
+        return segment(std::max(rows(), cols()) - length, length);
+    }
+    /**
 	* \brief Extracts a dynamic-size segment from the tail of the vector.
 	* Only available for vectors.
 	* Non-const version
 	* \param length the length of the segment
 	*/
-	auto tail(Index length) -> decltype(segment(0, length))
-	{
-		CUMAT_ERROR_IF_NO_NVCC(tail)
-			return segment(std::max(rows(), cols()) - length, length);
-	}
+    auto tail(Index length) -> decltype(segment(0, length))
+    {
+        CUMAT_ERROR_IF_NO_NVCC(tail)
+        return segment(std::max(rows(), cols()) - length, length);
+    }
 
-	//TODO: find a better place for the following two methods:
+    //TODO: find a better place for the following two methods:
 
 #ifdef CUMAT_PARSED_BY_DOXYGEN
-	/**
+    /**
 	* \brief Extracts the real part of the complex matrix.
 	* This method is only available for complex matrices.
 	* This is the non-const lvalue version
 	*/
-	ExtractComplexPartOp<Type, false, true> real()
-	{
-		CUMAT_STATIC_ASSERT(internal::NumTraits<_Scalar>::IsComplex, "Matrix must be complex");
-		return ExtractComplexPartOp<Type, false, true>(*this);
-	}
+    ExtractComplexPartOp<Type, false, true> real()
+    {
+        CUMAT_STATIC_ASSERT(internal::NumTraits<_Scalar>::IsComplex, "Matrix must be complex");
+        return ExtractComplexPartOp<Type, false, true>(*this);
+    }
 #else
-	/**
+    /**
 	* \brief Extracts the real part of the complex matrix.
 	* Specialization for non-complex matrices: no-op.
 	* This is the non-const lvalue version.
 	*/
-	template<typename S = typename internal::traits<Type>::Scalar,
-		typename = typename std::enable_if<!internal::NumTraits<S>::IsComplex>::type>
-	const Type& real()
-	{
-		return *this;
-	}
-	/**
+    template <typename S = typename internal::traits<Type>::Scalar,
+              typename = typename std::enable_if<!internal::NumTraits<S>::IsComplex>::type>
+    const Type& real()
+    {
+        return *this;
+    }
+    /**
 	* \brief Extracts the real part of the complex matrix.
 	* Specialization for complex matrices, extracts the real part.
 	* This is the non-const lvalue version
 	*/
-	template<typename S = typename internal::traits<Type>::Scalar,
-		typename = typename std::enable_if<internal::NumTraits<S>::IsComplex>::type>
-	ExtractComplexPartOp<Type, false, true> real()
-	{
-		CUMAT_STATIC_ASSERT(internal::NumTraits<_Scalar>::IsComplex, "Matrix must be complex");
-		return ExtractComplexPartOp<Type, false, true>(*this);
-	}
+    template <typename S = typename internal::traits<Type>::Scalar,
+              typename = typename std::enable_if<internal::NumTraits<S>::IsComplex>::type>
+    ExtractComplexPartOp<Type, false, true> real()
+    {
+        CUMAT_STATIC_ASSERT(internal::NumTraits<_Scalar>::IsComplex, "Matrix must be complex");
+        return ExtractComplexPartOp<Type, false, true>(*this);
+    }
 #endif
-	/**
+    /**
 	* \brief Extracts the imaginary part of the complex matrix.
 	* This method is only available for complex matrices.
 	* This is the non-const lvalue version
 	*/
-	ExtractComplexPartOp<Type, true, true> imag()
-	{
-		CUMAT_STATIC_ASSERT(internal::NumTraits<_Scalar>::IsComplex, "Matrix must be complex");
-		return ExtractComplexPartOp<Type, true, true>(*this);
-	}
-
-	};
+    ExtractComplexPartOp<Type, true, true> imag()
+    {
+        CUMAT_STATIC_ASSERT(internal::NumTraits<_Scalar>::IsComplex, "Matrix must be complex");
+        return ExtractComplexPartOp<Type, true, true>(*this);
+    }
+};
 
 /**
  * \brief Custom operator<< that prints the matrix and additional information.
@@ -2004,72 +2273,79 @@ public:
  * \return the output stream again
  */
 template <typename _Scalar, int _Rows, int _Columns, int _Batches, int _Flags>
-__host__ std::ostream& operator<<(std::ostream& os, const Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>& m)
+__host__ std::ostream& operator<<(std::ostream& os,
+                                  const Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>& m)
 {
-	os << "Matrix: ";
-	os << "rows=" << m.rows() << " (" << (_Rows == Dynamic ? "dynamic" : "compile-time") << ")";
-	os << ", cols=" << m.cols() << " (" << (_Columns == Dynamic ? "dynamic" : "compile-time") << ")";
-	os << ", batches=" << m.batches() << " (" << (_Batches == Dynamic ? "dynamic" : "compile-time") << ")";
-	os << ", storage=" << (CUMAT_IS_ROW_MAJOR(_Flags) ? "Row-Major" : "Column-Major") << std::endl;
+    os << "Matrix: ";
+    os << "rows=" << m.rows() << " ("
+       << (_Rows == Dynamic ? "dynamic" : "compile-time") << ")";
+    os << ", cols=" << m.cols() << " ("
+       << (_Columns == Dynamic ? "dynamic" : "compile-time") << ")";
+    os << ", batches=" << m.batches() << " ("
+       << (_Batches == Dynamic ? "dynamic" : "compile-time") << ")";
+    os << ", storage=" << (CUMAT_IS_ROW_MAJOR(_Flags) ? "Row-Major" : "Column-Major")
+       << std::endl;
 
-	//New code, custom printing implementation
-	io::print_matrix(os, m, io::IOFormat());
+    //New code, custom printing implementation
+    io::print_matrix(os, m, io::IOFormat());
 
-	//Old code for reference, uses Eigen
-	//for (int batch = 0; batch < m.batches(); ++batch)
-	//{
-	//    const auto emat = m.template block<Dynamic, Dynamic, 1>(0, 0, batch, m.rows(), m.cols(), 1).eval().toEigen();
-	//    if (m.batches() > 1) os << "batch " << batch << std::endl;
-	//    os << emat << std::endl;
-	//}
+    //Old code for reference, uses Eigen
+    //for (int batch = 0; batch < m.batches(); ++batch)
+    //{
+    //    const auto emat = m.template block<Dynamic, Dynamic, 1>(0, 0, batch, m.rows(), m.cols(), 1).eval().toEigen();
+    //    if (m.batches() > 1) os << "batch " << batch << std::endl;
+    //    os << emat << std::endl;
+    //}
 
-	return os;
+    return os;
 }
 
 namespace internal
 {
-	template<
-		typename _Dst,
-		typename _Scalar, int _Rows, int _Columns, int _Batches, int _Flags,
-		AssignmentMode _Mode>
-	struct Assignment<_Dst, Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>, _Mode, DenseDstTag, CwiseSrcTag>
-	{
-		typedef Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags> Type;
-		static void assign(_Dst& dst, const Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>& src)
-		{
-			//Here is now the place to perform the fast track evaluations for specific destinations
-			//Memcopy + Direct transpose, if dst is a Matrix or a MatrixBlock of specific shape (a slice)
-			//For now, just delegate to Cwise evaluation
-			Assignment<_Dst, CwiseOp<Type>, _Mode, DenseDstTag, CwiseSrcTag>::assign(dst, src);
-		}
-	};
+template <typename _Dst, typename _Scalar, int _Rows, int _Columns, int _Batches, int _Flags, AssignmentMode _Mode>
+struct Assignment<_Dst, Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>, _Mode, DenseDstTag, CwiseSrcTag>
+{
+    typedef Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags> Type;
+    static void assign(_Dst& dst, const Matrix<_Scalar, _Rows, _Columns, _Batches, _Flags>& src)
+    {
+        //Here is now the place to perform the fast track evaluations for specific destinations
+        //Memcopy + Direct transpose, if dst is a Matrix or a MatrixBlock of specific shape (a slice)
+        //For now, just delegate to Cwise evaluation
+        Assignment<_Dst, CwiseOp<Type>, _Mode, DenseDstTag, CwiseSrcTag>::assign(dst, src);
+    }
+};
 
-	template<typename _Matrix>
-	class MatrixInplaceAssignment
-	{
-	private:
-		_Matrix* matrix_;
-	public:
-		MatrixInplaceAssignment(_Matrix* matrix) : matrix_(matrix) {}
+template <typename _Matrix>
+class MatrixInplaceAssignment
+{
+  private:
+    _Matrix* matrix_;
 
-		/**
-		 * \brief Evaluates the expression inline inplace into the current matrix.
-		 * No new memory is created, it is reused!
-		 * This operator fails with an exception if the dimensions don't match.
-		 * \param expr the other expression
-		 * \return the underlying matrix
-		 */
-		template<typename Derived>
-		CUMAT_STRONG_INLINE _Matrix& operator=(const MatrixBase<Derived>& expr)
-		{
-			CUMAT_ASSERT_DIMENSION(matrix_->rows() == expr.rows());
-			CUMAT_ASSERT_DIMENSION(matrix_->cols() == expr.cols());
-			CUMAT_ASSERT_DIMENSION(matrix_->batches() == expr.batches());
-			Assignment<_Matrix, Derived, AssignmentMode::ASSIGN, DenseDstTag, typename Derived::SrcTag>::assign(*matrix_, expr.derived());
-			return *matrix_;
-		}
-	};
-}
+  public:
+    MatrixInplaceAssignment(_Matrix* matrix)
+        : matrix_(matrix)
+    {
+    }
+
+    /**
+    * \brief Evaluates the expression inline inplace into the current matrix.
+    * No new memory is created, it is reused!
+    * This operator fails with an exception if the dimensions don't match.
+    * \param expr the other expression
+    * \return the underlying matrix
+    */
+    template <typename Derived>
+    CUMAT_STRONG_INLINE _Matrix& operator=(const MatrixBase<Derived>& expr)
+    {
+        CUMAT_ASSERT_DIMENSION(matrix_->rows() == expr.rows());
+        CUMAT_ASSERT_DIMENSION(matrix_->cols() == expr.cols());
+        CUMAT_ASSERT_DIMENSION(matrix_->batches() == expr.batches());
+        Assignment<_Matrix, Derived, AssignmentMode::ASSIGN, DenseDstTag, typename Derived::SrcTag>::assign(
+            *matrix_, expr.derived());
+        return *matrix_;
+    }
+};
+}  // namespace internal
 
 //Common typedefs
 
@@ -2094,40 +2370,40 @@ namespace internal
 * \sa class Matrix
 */
 
-#define CUMAT_DEF_MATRIX1(scalar1, scalar2, order1, order2) \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 1, 1, order1> Scalar ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 1, Dynamic, order1> BScalar ## scalar2 ## order2; \
-    \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 1, 1, order1> Vector2 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 1, Dynamic, order1> BVector2 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 1, 1, order1> Vector3 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 1, Dynamic, order1> BVector3 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 1, 1, order1> Vector4 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 1, Dynamic, order1> BVector4 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, 1, 1, order1> VectorX ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, 1, Dynamic, order1> BVectorX ## scalar2 ## order2; \
-    \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 2, 1, order1> RowVector2 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 2, Dynamic, order1> BRowVector2 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 3, 1, order1> RowVector3 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 3, Dynamic, order1> BRowVector3 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 4, 1, order1> RowVector4 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 4, Dynamic, order1> BRowVector4 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, Dynamic, 1, order1> RowVectorX ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, Dynamic, Dynamic, order1> BRowVectorX ## scalar2 ## order2; \
-    \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 2, 1, order1> Matrix2 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 2, Dynamic, order1> BMatrix2 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 3, 1, order1> Matrix3 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 3, Dynamic, order1> BMatrix3 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 4, 1, order1> Matrix4 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 4, Dynamic, order1> BMatrix4 ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, Dynamic, 1, order1> MatrixX ## scalar2 ## order2; \
-    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, Dynamic, Dynamic, order1> BMatrixX ## scalar2 ## order2; \
+#define CUMAT_DEF_MATRIX1(scalar1, scalar2, order1, order2)                                                           \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 1, 1, order1> Scalar##scalar2##order2;                  \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 1, Dynamic, order1> BScalar##scalar2##order2;           \
+                                                                                                                      \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 1, 1, order1> Vector2##scalar2##order2;                 \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 1, Dynamic, order1> BVector2##scalar2##order2;          \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 1, 1, order1> Vector3##scalar2##order2;                 \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 1, Dynamic, order1> BVector3##scalar2##order2;          \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 1, 1, order1> Vector4##scalar2##order2;                 \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 1, Dynamic, order1> BVector4##scalar2##order2;          \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, 1, 1, order1> VectorX##scalar2##order2;           \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, 1, Dynamic, order1> BVectorX##scalar2##order2;    \
+                                                                                                                      \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 2, 1, order1> RowVector2##scalar2##order2;              \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 2, Dynamic, order1> BRowVector2##scalar2##order2;       \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 3, 1, order1> RowVector3##scalar2##order2;              \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 3, Dynamic, order1> BRowVector3##scalar2##order2;       \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 4, 1, order1> RowVector4##scalar2##order2;              \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, 4, Dynamic, order1> BRowVector4##scalar2##order2;       \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, Dynamic, 1, order1> RowVectorX##scalar2##order2;        \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 1, Dynamic, Dynamic, order1> BRowVectorX##scalar2##order2; \
+                                                                                                                      \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 2, 1, order1> Matrix2##scalar2##order2;                 \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 2, 2, Dynamic, order1> BMatrix2##scalar2##order2;          \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 3, 1, order1> Matrix3##scalar2##order2;                 \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 3, 3, Dynamic, order1> BMatrix3##scalar2##order2;          \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 4, 1, order1> Matrix4##scalar2##order2;                 \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, 4, 4, Dynamic, order1> BMatrix4##scalar2##order2;          \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, Dynamic, 1, order1> MatrixX##scalar2##order2;     \
+    /** \ingroup matrixtypedefs */ typedef Matrix<scalar1, Dynamic, Dynamic, Dynamic, order1> BMatrixX##scalar2##order2;
 
-#define CUMAT_DEF_MATRIX2(scalar1, scalar2) \
-    CUMAT_DEF_MATRIX1(scalar1, scalar2, ColumnMajor, C) \
-    CUMAT_DEF_MATRIX1(scalar1, scalar2, RowMajor, R) \
+#define CUMAT_DEF_MATRIX2(scalar1, scalar2)                                    \
+    CUMAT_DEF_MATRIX1(scalar1, scalar2, ColumnMajor, C)                        \
+    CUMAT_DEF_MATRIX1(scalar1, scalar2, RowMajor, R)                           \
     CUMAT_DEF_MATRIX1(scalar1, scalar2, ColumnMajor, )
 
 CUMAT_DEF_MATRIX2(bool, b)

@@ -5,228 +5,340 @@
 
 using namespace cuMat;
 
-template<typename Scalar>
+template <typename Scalar>
 void testMatrixMatrixDynamic()
 {
-    typedef Matrix<Scalar, Dynamic, Dynamic, Dynamic, RowMajor> matr;
+    typedef Matrix<Scalar, Dynamic, Dynamic, Dynamic, RowMajor>    matr;
     typedef Matrix<Scalar, Dynamic, Dynamic, Dynamic, ColumnMajor> matc;
 
-    Scalar dataA[1][2][4] {
-        {
-            {1, 4, 6, -3},
-            {-6, 8, 0, -2}
-        }
-    };
-    Scalar dataB[1][4][3] {
-        {
-            {-2, 1, 0},
-            {5, 7, -3},
-            {9, 6, 4},
-            {7, -2, -5}
-        }
-    };
-    Scalar dataC[1][2][3] { //C=A*B
-        {
-            {51, 71, 27},
-            {38, 54, -14}
-        }
-    };
+    Scalar dataA[1][2][4]{{{1, 4, 6, -3}, {-6, 8, 0, -2}}};
+    Scalar dataB[1][4][3]{{{-2, 1, 0}, {5, 7, -3}, {9, 6, 4}, {7, -2, -5}}};
+    Scalar dataC[1][2][3]{//C=A*B
+                          {{51, 71, 27}, {38, 54, -14}}};
 
     matr Ar = matr::fromArray(dataA);
     matr Br = matr::fromArray(dataB);
     matr Cr = matr::fromArray(dataC);
 
 #define RESET_PROFILING Profiling::instance().resetAll()
-#define CHECK_PROFILING \
-    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalAny) == 1); \
-    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalMatmul) == 1); \
+#define CHECK_PROFILING                                                        \
+    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalAny) == 1);      \
+    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalMatmul) == 1);   \
     Profiling::instance().resetAll();
 
     SECTION("regular")
     {
         matc Ac = Ar.block(0, 0, 0, 2, 4, 1);
         matc Bc = Br.block(0, 0, 0, 4, 3, 1);
-        RESET_PROFILING; matr M11 = Ar * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = Ar * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = Ar * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = Ar * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = Ac * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = Ac * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = Ac * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = Ac * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = Ar * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = Ar * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = Ar * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = Ar * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = Ac * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = Ac * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = Ac * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = Ac * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-left")
     {
-        Ar = Ar.transpose();
+        Ar      = Ar.transpose();
         matc Ac = Ar.block(0, 0, 0, 4, 2, 1);
         matc Bc = Br.block(0, 0, 0, 4, 3, 1);
-        RESET_PROFILING; matr M11 = Ar.transpose() * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = Ar.transpose() * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = Ar.transpose() * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = Ar.transpose() * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = Ac.transpose() * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = Ac.transpose() * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = Ac.transpose() * Br; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = Ac.transpose() * Br;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = Ar.transpose() * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = Ar.transpose() * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = Ar.transpose() * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = Ar.transpose() * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = Ac.transpose() * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = Ac.transpose() * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = Ac.transpose() * Bc; CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = Ac.transpose() * Bc;
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-right")
     {
-        Br = Br.transpose();
+        Br      = Br.transpose();
         matc Ac = Ar.block(0, 0, 0, 2, 4, 1);
         matc Bc = Br.block(0, 0, 0, 3, 4, 1);
-        RESET_PROFILING; matr M11 = Ar * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = Ar * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = Ar * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = Ar * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = Ac * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = Ac * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = Ac * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = Ac * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = Ar * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = Ar * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = Ar * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = Ar * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = Ac * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = Ac * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = Ac * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = Ac * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-left + transposed-right")
     {
-        Ar = Ar.transpose();
-        Br = Br.transpose();
+        Ar      = Ar.transpose();
+        Br      = Br.transpose();
         matc Ac = Ar.block(0, 0, 0, 4, 2, 1);
         matc Bc = Br.block(0, 0, 0, 3, 4, 1);
-        RESET_PROFILING; matr M11 = Ar.transpose() * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = Ar.transpose() * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = Ar.transpose() * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = Ar.transpose() * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = Ac.transpose() * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = Ac.transpose() * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = Ac.transpose() * Br.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = Ac.transpose() * Br.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = Ar.transpose() * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = Ar.transpose() * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = Ar.transpose() * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = Ar.transpose() * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = Ac.transpose() * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = Ac.transpose() * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = Ac.transpose() * Bc.transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = Ac.transpose() * Bc.transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-output")
     {
-        Cr = Cr.transpose();
+        Cr      = Cr.transpose();
         matc Ac = Ar.block(0, 0, 0, 2, 4, 1);
         matc Bc = Br.block(0, 0, 0, 4, 3, 1);
-        RESET_PROFILING; matr M11 = (Ar * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = (Ar * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = (Ar * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = (Ar * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = (Ac * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = (Ac * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = (Ac * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = (Ac * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = (Ar * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = (Ar * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = (Ar * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = (Ar * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = (Ac * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = (Ac * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = (Ac * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = (Ac * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-left + transposed-output")
     {
-        Ar = Ar.transpose();
-        Cr = Cr.transpose();
+        Ar      = Ar.transpose();
+        Cr      = Cr.transpose();
         matc Ac = Ar.block(0, 0, 0, 4, 2, 1);
         matc Bc = Br.block(0, 0, 0, 4, 3, 1);
-        RESET_PROFILING; matr M11 = (Ar.transpose() * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = (Ar.transpose() * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = (Ar.transpose() * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = (Ar.transpose() * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = (Ac.transpose() * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = (Ac.transpose() * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = (Ac.transpose() * Br).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = (Ac.transpose() * Br).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = (Ar.transpose() * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = (Ar.transpose() * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = (Ar.transpose() * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = (Ar.transpose() * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = (Ac.transpose() * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = (Ac.transpose() * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = (Ac.transpose() * Bc).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = (Ac.transpose() * Bc).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-right + transposed-output")
     {
-        Br = Br.transpose();
-        Cr = Cr.transpose();
+        Br      = Br.transpose();
+        Cr      = Cr.transpose();
         matc Ac = Ar.block(0, 0, 0, 2, 4, 1);
         matc Bc = Br.block(0, 0, 0, 3, 4, 1);
-        RESET_PROFILING; matr M11 = (Ar * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = (Ar * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = (Ar * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = (Ar * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = (Ac * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = (Ac * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = (Ac * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = (Ac * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = (Ar * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = (Ar * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = (Ar * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = (Ar * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = (Ac * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = (Ac * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = (Ac * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = (Ac * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
     SECTION("transposed-left + transposed-right + transposed-output")
     {
-        Ar = Ar.transpose();
-        Br = Br.transpose();
-        Cr = Cr.transpose();
+        Ar      = Ar.transpose();
+        Br      = Br.transpose();
+        Cr      = Cr.transpose();
         matc Ac = Ar.block(0, 0, 0, 4, 2, 1);
         matc Bc = Br.block(0, 0, 0, 3, 4, 1);
-        RESET_PROFILING; matr M11 = (Ar.transpose() * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M11 = (Ar.transpose() * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M11);
-        RESET_PROFILING; matc M12 = (Ar.transpose() * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M12 = (Ar.transpose() * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M12);
-        RESET_PROFILING; matr M13 = (Ac.transpose() * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M13 = (Ac.transpose() * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M13);
-        RESET_PROFILING; matc M14 = (Ac.transpose() * Br.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M14 = (Ac.transpose() * Br.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M14);
-        RESET_PROFILING; matr M15 = (Ar.transpose() * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M15 = (Ar.transpose() * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M15);
-        RESET_PROFILING; matc M16 = (Ar.transpose() * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M16 = (Ar.transpose() * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M16);
-        RESET_PROFILING; matr M17 = (Ac.transpose() * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matr M17 = (Ac.transpose() * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M17);
-        RESET_PROFILING; matc M18 = (Ac.transpose() * Bc.transpose()).transpose(); CHECK_PROFILING;
+        RESET_PROFILING;
+        matc M18 = (Ac.transpose() * Bc.transpose()).transpose();
+        CHECK_PROFILING;
         assertMatrixEquality(Cr, M18);
     }
 
@@ -235,45 +347,29 @@ void testMatrixMatrixDynamic()
 }
 TEST_CASE("matrix-matrix dynamic", "[matmul]")
 {
-    SECTION("float") {
+    SECTION("float")
+    {
         testMatrixMatrixDynamic<float>();
     }
-    SECTION("double") {
+    SECTION("double")
+    {
         testMatrixMatrixDynamic<double>();
     }
 }
 
 
-template<typename Scalar>
+template <typename Scalar>
 void testMatrixVector()
 {
-    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor> matr;
+    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor>    matr;
     typedef Matrix<Scalar, Dynamic, Dynamic, 1, ColumnMajor> matc;
-    typedef Matrix<Scalar, Dynamic, 1, 1, RowMajor> vecr;
-    typedef Matrix<Scalar, Dynamic, 1, 1, ColumnMajor> vecc;
+    typedef Matrix<Scalar, Dynamic, 1, 1, RowMajor>          vecr;
+    typedef Matrix<Scalar, Dynamic, 1, 1, ColumnMajor>       vecc;
 
-    Scalar dataA[1][3][4]{
-        {
-            { 1, 4, 6, -3 },
-            { -6, 8, 0, -2 },
-            {5, 2, -7, 8}
-        }
-    };
-    Scalar dataB[1][4][1]{
-        {
-            { -2 },
-            { 5 },
-            { 9 },
-            { 7 }
-        }
-    };
-    Scalar dataC[1][3][1]{ //C=A*B
-        {
-            { 51 },
-            { 38 },
-            {-7}
-        }
-    };
+    Scalar dataA[1][3][4]{{{1, 4, 6, -3}, {-6, 8, 0, -2}, {5, 2, -7, 8}}};
+    Scalar dataB[1][4][1]{{{-2}, {5}, {9}, {7}}};
+    Scalar dataC[1][3][1]{//C=A*B
+                          {{51}, {38}, {-7}}};
 
     matr Ar = matr::fromArray(dataA);
     vecr Br = vecr::fromArray(dataB);
@@ -301,41 +397,29 @@ void testMatrixVector()
 }
 TEST_CASE("matrix-vector", "[matmul]")
 {
-    SECTION("float") {
+    SECTION("float")
+    {
         testMatrixVector<float>();
     }
-    SECTION("double") {
+    SECTION("double")
+    {
         testMatrixVector<double>();
     }
 }
 
 
-template<typename Scalar>
+template <typename Scalar>
 void testVectorMatrix()
 {
-    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor> matr;
+    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor>    matr;
     typedef Matrix<Scalar, Dynamic, Dynamic, 1, ColumnMajor> matc;
-    typedef Matrix<Scalar, 1, Dynamic, 1, RowMajor> vecr;
-    typedef Matrix<Scalar, 1, Dynamic, 1, ColumnMajor> vecc;
+    typedef Matrix<Scalar, 1, Dynamic, 1, RowMajor>          vecr;
+    typedef Matrix<Scalar, 1, Dynamic, 1, ColumnMajor>       vecc;
 
-    Scalar dataA[1][1][4]{
-        {
-            { -2, 5, 9, 7 }
-        }
-    };
-    Scalar dataB[1][4][3]{
-        {
-            { 1, 4, 6 },
-            { -6, 8, 0 },
-            { 5, 2, -7 },
-            { 3, 0, -1}
-        }
-    };
-    Scalar dataC[1][1][3]{ //C=A*B
-        {
-            { 34, 50, -82 }
-        }
-    };
+    Scalar dataA[1][1][4]{{{-2, 5, 9, 7}}};
+    Scalar dataB[1][4][3]{{{1, 4, 6}, {-6, 8, 0}, {5, 2, -7}, {3, 0, -1}}};
+    Scalar dataC[1][1][3]{//C=A*B
+                          {{34, 50, -82}}};
 
     vecr Ar = vecr::fromArray(dataA);
     matr Br = matr::fromArray(dataB);
@@ -363,64 +447,45 @@ void testVectorMatrix()
 }
 TEST_CASE("vector-matrix", "[matmul]")
 {
-    SECTION("float") {
+    SECTION("float")
+    {
         testVectorMatrix<float>();
     }
-    SECTION("double") {
+    SECTION("double")
+    {
         testVectorMatrix<double>();
     }
 }
 
 
-
-template<typename Scalar>
+template <typename Scalar>
 void testVectorVector()
 {
-    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor> matr;
+    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor>    matr;
     typedef Matrix<Scalar, Dynamic, Dynamic, 1, ColumnMajor> matc;
-    typedef Matrix<Scalar, 1, Dynamic, 1, RowMajor> rvecr;
-    typedef Matrix<Scalar, 1, Dynamic, 1, ColumnMajor> rvecc;
-    typedef Matrix<Scalar, Dynamic, 1, 1, RowMajor> cvecr;
-    typedef Matrix<Scalar, Dynamic, 1, 1, ColumnMajor> cvecc;
-    typedef Matrix<Scalar, 1, 1, 1, RowMajor> scalarr;
-    typedef Matrix<Scalar, 1, 1, 1, ColumnMajor> scalarc;
+    typedef Matrix<Scalar, 1, Dynamic, 1, RowMajor>          rvecr;
+    typedef Matrix<Scalar, 1, Dynamic, 1, ColumnMajor>       rvecc;
+    typedef Matrix<Scalar, Dynamic, 1, 1, RowMajor>          cvecr;
+    typedef Matrix<Scalar, Dynamic, 1, 1, ColumnMajor>       cvecc;
+    typedef Matrix<Scalar, 1, 1, 1, RowMajor>                scalarr;
+    typedef Matrix<Scalar, 1, 1, 1, ColumnMajor>             scalarc;
 
-    Scalar dataA[1][1][4]{
-        {
-            { -2, 5, 9, 7 }
-        }
-    };
-    Scalar dataB[1][4][1]{
-        {
-            { 1 },
-            { -6 },
-            { 5 },
-            { 3 }
-        }
-    };
-    Scalar dataAB[1][1][1]{
-        {
-            { 34 }
-        }
-    };
+    Scalar dataA[1][1][4]{{{-2, 5, 9, 7}}};
+    Scalar dataB[1][4][1]{{{1}, {-6}, {5}, {3}}};
+    Scalar dataAB[1][1][1]{{{34}}};
     Scalar dataBA[1][4][4]{
-        {
-            { -2, 5, 9, 7 },
-            { 12, -30, -54, -42 },
-            { -10, 25, 45, 35 },
-            { -6, 15, 27, 21 }
-        }
-    };
+        {{-2, 5, 9, 7}, {12, -30, -54, -42}, {-10, 25, 45, 35}, {-6, 15, 27, 21}}};
 
-    rvecr Ar = rvecr::fromArray(dataA);
-    cvecr Br = cvecr::fromArray(dataB);
+    rvecr   Ar  = rvecr::fromArray(dataA);
+    cvecr   Br  = cvecr::fromArray(dataB);
     scalarr ABr = scalarr::fromArray(dataAB);
-    matr BAr = matr::fromArray(dataBA);
+    matr    BAr = matr::fromArray(dataBA);
 
     rvecc Ac = Ar.block(0, 0, 0, 1, 4, 1);
     cvecc Bc = Br.block(0, 0, 0, 4, 1, 1);
 
-    SECTION("A*B -> scalar") {
+    SECTION("A*B -> scalar")
+    {
         scalarr M11 = Ar * Br;
         assertMatrixEquality(ABr, M11);
         scalarc M12 = Ar * Br;
@@ -439,7 +504,8 @@ void testVectorVector()
         assertMatrixEquality(ABr, M18);
     }
 
-    SECTION("B*A -> matrix") {
+    SECTION("B*A -> matrix")
+    {
         matr M11 = Br * Ar;
         assertMatrixEquality(BAr, M11);
         matc M12 = Br * Ar;
@@ -460,56 +526,51 @@ void testVectorVector()
 }
 TEST_CASE("vector-vector", "[matmul]")
 {
-    SECTION("float") {
+    SECTION("float")
+    {
         testVectorVector<float>();
     }
-    SECTION("double") {
+    SECTION("double")
+    {
         testVectorVector<double>();
     }
 }
 
 
-template<typename Scalar>
+template <typename Scalar>
 void testMatrixMatrixComplex()
 {
-    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor> matr;
+    typedef Matrix<Scalar, Dynamic, Dynamic, 1, RowMajor>    matr;
     typedef Matrix<Scalar, Dynamic, Dynamic, 1, ColumnMajor> matc;
 
-    Scalar Adata[1][3][3]{
-        {
-            { Scalar(1,0), Scalar(6,0), Scalar(-4,0) }, //only real
-            { Scalar(0,5), Scalar(0,-3), Scalar(0, 0.3f) }, //only imaginary
-            { Scalar(0.4f,0.9f), Scalar(-1.5f,0.3f), Scalar(3.5f,-2.8f) } //mixed
-        }
-    };
-    matr A = matr::fromArray(Adata);
+    Scalar Adata[1][3][3]{{
+        {Scalar(1, 0), Scalar(6, 0), Scalar(-4, 0)},     //only real
+        {Scalar(0, 5), Scalar(0, -3), Scalar(0, 0.3f)},  //only imaginary
+        {Scalar(0.4f, 0.9f), Scalar(-1.5f, 0.3f), Scalar(3.5f, -2.8f)}  //mixed
+    }};
+    matr   A = matr::fromArray(Adata);
 
-    Scalar Bdata[1][3][3]{
-        {
-            { Scalar(1,0), Scalar(0,-5), Scalar(0.4f,-0.9f) },
-            { Scalar(6,0), Scalar(0,3), Scalar(-1.5f,-0.3f) },
-            { Scalar(-4,0), Scalar(0, -0.3f), Scalar(3.5f,2.8f) }
-        }
-    };
-    matr B = matr::fromArray(Bdata);
+    Scalar Bdata[1][3][3]{{{Scalar(1, 0), Scalar(0, -5), Scalar(0.4f, -0.9f)},
+                           {Scalar(6, 0), Scalar(0, 3), Scalar(-1.5f, -0.3f)},
+                           {Scalar(-4, 0), Scalar(0, -0.3f), Scalar(3.5f, 2.8f)}}};
+    matr   B = matr::fromArray(Bdata);
 
     Scalar ABdata[1][3][3]{
-        {
-            { Scalar(53, 0), Scalar(0, 14.2), Scalar(-22.6f, -13.9)},
-            { Scalar(0, -14.2f), Scalar(34.09f, 0), Scalar(2.76f, 7.55)},
-            { Scalar(-22.6f, 13.9f), Scalar(2.76f, -7.55f), Scalar(23.4f, 0)}
-        }
-    };
+        {{Scalar(53, 0), Scalar(0, 14.2), Scalar(-22.6f, -13.9)},
+         {Scalar(0, -14.2f), Scalar(34.09f, 0), Scalar(2.76f, 7.55)},
+         {Scalar(-22.6f, 13.9f), Scalar(2.76f, -7.55f), Scalar(23.4f, 0)}}};
     matr AB = matr::fromArray(ABdata);
 
-    assertMatrixEquality(AB, A*B, 1e-5);
+    assertMatrixEquality(AB, A * B, 1e-5);
 }
 TEST_CASE("matrix-matrix complex", "[matmul]")
 {
-    SECTION("complex-float") {
+    SECTION("complex-float")
+    {
         testMatrixMatrixComplex<cfloat>();
     }
-    SECTION("complex-double") {
+    SECTION("complex-double")
+    {
         testMatrixMatrixComplex<cdouble>();
     }
 }
@@ -517,31 +578,14 @@ TEST_CASE("matrix-matrix complex", "[matmul]")
 //Test assignment to cwise output (block)
 TEST_CASE("write to cwise", "[matmul]")
 {
-    typedef float Scalar;
+    typedef float                                               Scalar;
     typedef Matrix<Scalar, Dynamic, Dynamic, Dynamic, RowMajor> matr;
 
-    Scalar dataA[1][2][4] {
-        {
-            {1, 4, 6, -3},
-            {-6, 8, 0, -2}
-        }
-    };
-    Scalar dataB[1][4][3] {
-        {
-            {-2, 1, 0},
-            {5, 7, -3},
-            {9, 6, 4},
-            {7, -2, -5}
-        }
-    };
-    Scalar dataC[1][4][5] { //C=A*B
-        {
-            {0, 0, 0, 0, 0},
-            {0, 51, 71, 27, 0},
-            {0, 38, 54, -14, 0},
-            { 0, 0, 0, 0, 0 }
-        }
-    };
+    Scalar dataA[1][2][4]{{{1, 4, 6, -3}, {-6, 8, 0, -2}}};
+    Scalar dataB[1][4][3]{{{-2, 1, 0}, {5, 7, -3}, {9, 6, 4}, {7, -2, -5}}};
+    Scalar dataC[1][4][5]{
+        //C=A*B
+        {{0, 0, 0, 0, 0}, {0, 51, 71, 27, 0}, {0, 38, 54, -14, 0}, {0, 0, 0, 0, 0}}};
 
     matr Ar = matr::fromArray(dataA);
     matr Br = matr::fromArray(dataB);
@@ -550,10 +594,10 @@ TEST_CASE("write to cwise", "[matmul]")
     matr M = matr::Zero(4, 5, 1);
     Profiling::instance().resetAll();
     M.block<2, 3, 1>(1, 1, 0) = Ar * Br;
-    REQUIRE(Profiling::instance().get(Profiling::Counter::DeviceMemAlloc) == 1); //one allocation of the temporary
-    REQUIRE(Profiling::instance().get(Profiling::Counter::DeviceMemFree) == 1); //one deallocation of the temporary
-    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalMatmul) == 1); //matmul into temporary
-    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalCwise) == 1); //cwise into matrix block
-    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalAny) == 2); //nothing else
+    REQUIRE(Profiling::instance().get(Profiling::Counter::DeviceMemAlloc) == 1);  //one allocation of the temporary
+    REQUIRE(Profiling::instance().get(Profiling::Counter::DeviceMemFree) == 1);  //one deallocation of the temporary
+    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalMatmul) == 1);  //matmul into temporary
+    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalCwise) == 1);  //cwise into matrix block
+    REQUIRE(Profiling::instance().get(Profiling::Counter::EvalAny) == 2);  //nothing else
     assertMatrixEquality(Cr, M);
 }

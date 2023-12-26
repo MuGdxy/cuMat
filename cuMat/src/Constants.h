@@ -17,18 +17,19 @@ const int Dynamic = -1;
  */
 enum Flags
 {
-	/**
-	 * \brief The storage is column major (the default).
-	 */
-	ColumnMajor = 0x00,
-	/**
-	 * \brief The storage is row major.
-	 */
-	RowMajor = 0x01,
+    /**
+    * \brief The storage is column major (the default).
+    */
+    ColumnMajor = 0x00,
+    /**
+    * \brief The storage is row major.
+    */
+    RowMajor = 0x01,
 
 };
-#define CUMAT_IS_COLUMN_MAJOR(flags) (((flags) & CUMAT_NAMESPACE Flags::RowMajor)==0)
-#define CUMAT_IS_ROW_MAJOR(flags) ((flags) & CUMAT_NAMESPACE Flags::RowMajor)
+#define CUMAT_IS_COLUMN_MAJOR(flags)                                           \
+    (((flags)&CUMAT_NAMESPACE Flags::RowMajor) == 0)
+#define CUMAT_IS_ROW_MAJOR(flags) ((flags)&CUMAT_NAMESPACE Flags::RowMajor)
 
 /**
  * \brief Flags that specify how the data in a MatrixBase-expression can be accessed.
@@ -93,11 +94,11 @@ enum AccessFlags
  */
 enum Axis
 {
-	NoAxis = 0,
-    Row = 1,
+    NoAxis = 0,
+    Row    = 1,
     Column = 2,
-    Batch = 4,
-    All = Row | Column | Batch
+    Batch  = 4,
+    All    = Row | Column | Batch
 };
 
 /**
@@ -105,38 +106,50 @@ enum Axis
  */
 namespace ReductionAlg
 {
-	/**
-	 * \brief reduction with cub::DeviceSegmentedReduce
-	 */
-	struct Segmented {};
-	/**
-	 * \brief Thread reduction. Each thread reduces a batch.
-	 */
-	struct Thread {};
-	/**
-	 * \brief Warp reduction. Each warp reduces a batch.
-	 */
-	struct Warp {};
-	/**
-	 * \brief Block reduction. Each block reduces a batch.
-	 * \tparam N the block size
-	 */
-	template<int N>
-	struct Block {};
-	/**
-	 * \brief Device reduction. 
-	 * Each reduction per batch is computed with a separate call to cub::DeviceReduce,
-	 * parallelized over N cuda streams.
-	 * \tparam N the number of parallel streams
-	 */
-	template<int N>
-	struct Device {};
-	/**
-	 * \brief Automatic algorithm selection.
-	 * Chooses the algorithm during runtime based on the matrix sizes.
-	 */
-	struct Auto {};
-}
+/**
+    * \brief reduction with cub::DeviceSegmentedReduce
+    */
+struct Segmented
+{
+};
+/**
+    * \brief Thread reduction. Each thread reduces a batch.
+    */
+struct Thread
+{
+};
+/**
+    * \brief Warp reduction. Each warp reduces a batch.
+    */
+struct Warp
+{
+};
+/**
+    * \brief Block reduction. Each block reduces a batch.
+    * \tparam N the block size
+    */
+template <int N>
+struct Block
+{
+};
+/**
+    * \brief Device reduction. 
+    * Each reduction per batch is computed with a separate call to cub::DeviceReduce,
+    * parallelized over N cuda streams.
+    * \tparam N the number of parallel streams
+    */
+template <int N>
+struct Device
+{
+};
+/**
+    * \brief Automatic algorithm selection.
+    * Chooses the algorithm during runtime based on the matrix sizes.
+    */
+struct Auto
+{
+};
+}  // namespace ReductionAlg
 
 /**
 * \brief Specifies the assignment mode in \c Assignment::assign() .
@@ -175,11 +188,11 @@ enum SparseFlags
     * \brief Matrix stored in the Compressed Sparse Row format.
     */
     CSR = 2,
-	/**
-	 * \brief Column-major ELLPACK format. 
-	 * This format is optimized for matrices with uniform nnz per row.
-	 */
-	ELLPACK = 3,
+    /**
+    * \brief Column-major ELLPACK format. 
+    * This format is optimized for matrices with uniform nnz per row.
+    */
+    ELLPACK = 3,
 };
 
 CUMAT_NAMESPACE_END

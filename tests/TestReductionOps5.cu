@@ -12,16 +12,16 @@ using namespace cuMat;
 
 TEST_CASE("reduce_large", "[reduce]")
 {
-	static const int sizes[] = { 10 ,100, 1000, 10000, 100000, 1000000 };
-	for (int size : sizes)
-	{
-		Eigen::VectorXd hv = Eigen::VectorXd::Random(size);
-		cuMat::VectorXd dv = cuMat::VectorXd::fromEigen(hv);
+    static const int sizes[] = {10, 100, 1000, 10000, 100000, 1000000};
+    for(int size : sizes)
+    {
+        Eigen::VectorXd hv = Eigen::VectorXd::Random(size);
+        cuMat::VectorXd dv = cuMat::VectorXd::fromEigen(hv);
 
-		double normH = hv.squaredNorm();
-		double normD1 = static_cast<double>(dv.squaredNorm());
-		double normD2 = static_cast<double>(dv.squaredNorm());
-		REQUIRE(normH == Approx(normD1));
-		REQUIRE(normH == Approx(normD2));
-	}
+        double normH  = hv.squaredNorm();
+        double normD1 = static_cast<double>(dv.squaredNorm());
+        double normD2 = static_cast<double>(dv.squaredNorm());
+        REQUIRE(normH == Approx(normD1));
+        REQUIRE(normH == Approx(normD2));
+    }
 }

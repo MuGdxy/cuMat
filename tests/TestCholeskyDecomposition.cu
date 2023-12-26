@@ -5,101 +5,89 @@
 
 using namespace cuMat;
 
-template<typename Scalar, int Flags>
+template <typename Scalar, int Flags>
 void testCholeskyDecompositionReal()
 {
     typedef Matrix<Scalar, Dynamic, Dynamic, 2, Flags> mat_t;
-    double dataA[2][5][5] {
-        {
-            {2.1383,1.34711,2.44672,1.17769,1.27679},
-            {1.34711,1.74138,2.11905,0.850403,1.4032},
-            {2.44672,2.11905,3.555,1.7608,2.06206},
-            {1.17769,0.850403,1.7608,1.42897,1.14107},
-            {1.27679,1.4032,2.06206,1.14107,1.4566}
-        },
-        {
-            {1.28668,1.01275,0.833612,1.41058,0.582176},
-            {1.01275,2.23712,1.46201,1.4821,1.17532},
-            {0.833612,1.46201,1.17368,1.33016,0.744467},
-            {1.41058,1.4821,1.33016,1.88637,0.773026},
-            {0.582176,1.17532,0.744467,0.773026,0.730395}
-        }
-    };
-    mat_t A = BMatrixXdR::fromArray(dataA).cast<Scalar>().template block<5, 5, 2>(0, 0, 0);
+    double dataA[2][5][5]{{{2.1383, 1.34711, 2.44672, 1.17769, 1.27679},
+                           {1.34711, 1.74138, 2.11905, 0.850403, 1.4032},
+                           {2.44672, 2.11905, 3.555, 1.7608, 2.06206},
+                           {1.17769, 0.850403, 1.7608, 1.42897, 1.14107},
+                           {1.27679, 1.4032, 2.06206, 1.14107, 1.4566}},
+                          {{1.28668, 1.01275, 0.833612, 1.41058, 0.582176},
+                           {1.01275, 2.23712, 1.46201, 1.4821, 1.17532},
+                           {0.833612, 1.46201, 1.17368, 1.33016, 0.744467},
+                           {1.41058, 1.4821, 1.33016, 1.88637, 0.773026},
+                           {0.582176, 1.17532, 0.744467, 0.773026, 0.730395}}};
+    mat_t  A =
+        BMatrixXdR::fromArray(dataA).cast<Scalar>().template block<5, 5, 2>(0, 0, 0);
 
-    double dataB[2][5][2] {
-        { 
-            { 0.352364, 1.86783 },
-            { 0.915126, -0.78421 },
-            { -1.71784, -1.47416 },
-            { -1.84341, - 0.58641 },
-            { 0.210527, 0.928482 } 
-        },
-        { 
-            { 0.0407573, 0.219543 },
-            { 0.748412, 0.564233 },
-            { 1.41703, 1.85561 },
-            { -0.897485, 0.418297 },
-            { 1.682, -0.303229 } 
-        }
-    };
-    mat_t B = BMatrixXdR::fromArray(dataB).cast<Scalar>().template block<5, 2, 2>(0, 0, 0);
+    double dataB[2][5][2]{{{0.352364, 1.86783},
+                           {0.915126, -0.78421},
+                           {-1.71784, -1.47416},
+                           {-1.84341, -0.58641},
+                           {0.210527, 0.928482}},
+                          {{0.0407573, 0.219543},
+                           {0.748412, 0.564233},
+                           {1.41703, 1.85561},
+                           {-0.897485, 0.418297},
+                           {1.682, -0.303229}}};
+    mat_t  B =
+        BMatrixXdR::fromArray(dataB).cast<Scalar>().template block<5, 2, 2>(0, 0, 0);
 
-    double dataAB[2][5][2] {
-        {
-            {6.11211,10.4349},
-            {1.27924,-7.19059},
-            {-8.95239,-12.0052},
-            {-2.75267,-5.99761},
-            {8.38455,20.1113}
-        },
-        {
-            {260.821,208.526},
-            {-134.634,-100.712},
-            {450.214,359.579},
-            {-394.991,-314.458},
-            {-29.7862,-38.2601}
-        }
-    };
-    mat_t AB = BMatrixXdR::fromArray(dataAB).cast<Scalar>().template block<5, 2, 2>(0, 0, 0);
+    double dataAB[2][5][2]{{{6.11211, 10.4349},
+                            {1.27924, -7.19059},
+                            {-8.95239, -12.0052},
+                            {-2.75267, -5.99761},
+                            {8.38455, 20.1113}},
+                           {{260.821, 208.526},
+                            {-134.634, -100.712},
+                            {450.214, 359.579},
+                            {-394.991, -314.458},
+                            {-29.7862, -38.2601}}};
+    mat_t  AB =
+        BMatrixXdR::fromArray(dataAB).cast<Scalar>().template block<5, 2, 2>(0, 0, 0);
 
-    double determinantData[2][1][1]{
-        {{0.0359762}},
-        {{0.000185246}}
-    };
-    mat_t determinant = BMatrixXdR::fromArray(determinantData).cast<Scalar>().template block<1, 1, 2>(0, 0, 0);
+    double determinantData[2][1][1]{{{0.0359762}}, {{0.000185246}}};
+    mat_t  determinant =
+        BMatrixXdR::fromArray(determinantData).cast<Scalar>().template block<1, 1, 2>(0, 0, 0);
 
     //perform Cholesky decomposition
-    CholeskyDecomposition<mat_t> decomposition(A);
-    typename CholeskyDecomposition<mat_t>::EvaluatedMatrix matrixCholesky = decomposition.getMatrixCholesky();
-    REQUIRE(A.data() != matrixCholesky.data()); //ensure that the original matrix was not modified
+    CholeskyDecomposition<mat_t>                           decomposition(A);
+    typename CholeskyDecomposition<mat_t>::EvaluatedMatrix matrixCholesky =
+        decomposition.getMatrixCholesky();
+    REQUIRE(A.data() != matrixCholesky.data());  //ensure that the original matrix was not modified
 
     //Solve linear system
-    SECTION("solve") {
+    SECTION("solve")
+    {
         auto solveResult = decomposition.solve(B).eval();
         INFO("input matrix:\n" << A);
         INFO("decomposition:\n" << matrixCholesky);
-        INFO("A*X = " << (A*solveResult).eval());
+        INFO("A*X = " << (A * solveResult).eval());
         assertMatrixEqualityRelative(AB, solveResult, 1e-2);
     }
-    
+
     //compute determinant
-    SECTION("det") {
+    SECTION("det")
+    {
         auto determinantResult = decomposition.determinant().eval();
         assertMatrixEqualityRelative(determinant, determinantResult, 1e-2);
     }
-    
+
     //compute determinant
-    SECTION("log-det") {
+    SECTION("log-det")
+    {
         auto logDeterminantResult = decomposition.logDeterminant().eval();
         assertMatrixEqualityRelative(determinant.cwiseLog().eval(), logDeterminantResult, 1e-2);
     }
 
     //Test inverse
-    SECTION("inverse") {
+    SECTION("inverse")
+    {
         auto inverseResult = decomposition.inverse().eval();
         INFO("inverse: \n" << inverseResult);
-        assertMatrixEquality(mat_t::Identity(5, 5, 2), A*inverseResult, 1e-2);
+        assertMatrixEquality(mat_t::Identity(5, 5, 2), A * inverseResult, 1e-2);
     }
 }
 
@@ -248,4 +236,3 @@ TEST_CASE("Cholesky-Decomposition", "[Dense]")
     }
     */
 }
-

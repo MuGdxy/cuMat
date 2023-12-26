@@ -11,7 +11,8 @@ TEST_CASE("random", "[random]")
 {
     SimpleRandom r;
 
-    SECTION("bool") {
+    SECTION("bool")
+    {
         BMatrixXb m(100, 110, 120);
         r.fillUniform(m, false, true);
         //there is not much we can test here
@@ -74,7 +75,8 @@ TEST_CASE("random-defaults", "[random]")
 {
     SimpleRandom r;
 
-    SECTION("bool") {
+    SECTION("bool")
+    {
         BMatrixXb m(100, 110, 120);
         r.fillUniform(m);
         //there is not much we can test here
